@@ -1,16 +1,18 @@
-"""
-ASGI config for BitHunter project.
-
-It exposes the ASGI callable as a module-level variable named ``application``.
-
-For more information on this file, see
-https://docs.djangoproject.com/en/3.2/howto/deployment/asgi/
-"""
-
 import os
-
 from django.core.asgi import get_asgi_application
+from channels.routing import ProtocolTypeRouter, URLRouter
+from channels.auth import AuthMiddlewareStack
+from trading.routing import websocket_urlpatterns as trading_websockets
+from analytics.routing import websocket_urlpatterns as analytics_websockets
 
 os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'BitHunter.settings')
 
-application = get_asgi_application()
+application = ProtocolTypeRouter({
+    'http': get_asgi_application(),
+    'websocket': AuthMiddlewareStack(
+        URLRouter(
+            trading_websockets + analytics_websockets
+        )
+    ),
+})
+
