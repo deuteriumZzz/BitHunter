@@ -91,3 +91,16 @@ CELERY_RESULT_BACKEND = os.getenv('REDIS_URL', 'redis://localhost:6379/0')
 # ДОБАВЛЕНО: Настройки для RL и новостей
 NEWS_API_KEY = os.getenv('NEWS_API_KEY')
 DEMO_MODE = os.getenv('DEMO_MODE', 'False').lower() == 'true'
+
+
+CACHES = {
+    'default': {
+        'BACKEND': 'django_redis.cache.RedisCache',
+        'LOCATION': os.getenv('REDIS_URL', 'redis://127.0.0.1:6379/1'),  # Установите переменную окружения REDIS_URL
+        'OPTIONS': {
+            'CLIENT_CLASS': 'django_redis.client.DefaultClient',
+        }
+    }
+}
+
+ASGI_APPLICATION = 'BitHunter.asgi.application'

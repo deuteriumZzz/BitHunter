@@ -1,6 +1,7 @@
 from django.urls import path, include
 from rest_framework.routers import DefaultRouter
 from . import views
+from .views import async_train_rl
 
 router = DefaultRouter()
 # Регистрация ViewSets для моделей
@@ -17,4 +18,5 @@ urlpatterns = [
     path('run-bot/<int:strategy_id>/', views.run_bot_view, name='run_bot'),
     path('train-model/', views.train_model_view, name='train_model'),
     path('check-alerts/', views.check_alerts_view, name='check_alerts'),
+    path('async-train/', async_train_rl, name='async_train_rl'),
 ]

@@ -5,6 +5,16 @@ from rest_framework.response import Response
 from django_filters.rest_framework import DjangoFilterBackend
 from rest_framework.filters import OrderingFilter
 
+# Новые импорты для оптимизации и кэширования
+from django.utils.decorators import method_decorator
+from django.views.decorators.cache import cache_page
+from django.db.models import Prefetch
+
+# Импорты для async views
+from django.http import JsonResponse
+from asgiref.sync import sync_to_async
+import asyncio
+
 # Импорты моделей
 from trading.models import ApiKey, Strategy, Trade
 from analytics.models import HistoricalData, Prediction
@@ -23,8 +33,12 @@ class ApiKeyViewSet(viewsets.ModelViewSet):
     filterset_fields = ['exchange']
     ordering_fields = ['created_at']
 
+    @method_decorator(cache_page(60 * 15))  # Кэширование на 15 минут
+    def list(self, request, *args, **kwargs):
+        return super().list(request, *args, **kwargs)
+
     def get_queryset(self):
-        return self.queryset.filter(user=self.request.user)
+        return super().get_queryset().select_related('user')  # Оптимизация FK
 
     def perform_create(self, serializer):
         serializer.save(user=self.request.user)
@@ -37,8 +51,12 @@ class StrategyViewSet(viewsets.ModelViewSet):
     filterset_fields = ['is_active', 'symbol']
     ordering_fields = ['created_at']
 
+    @method_decorator(cache_page(60 * 15))  # Кэширование на 15 минут
+    def list(self, request, *args, **kwargs):
+        return super().list(request, *args, **kwargs)
+
     def get_queryset(self):
-        return self.queryset.filter(user=self.request.user)
+        return super().get_queryset().select_related('user').prefetch_related('trades')  # Предзагрузка связанных trades
 
     def perform_create(self, serializer):
         serializer.save(user=self.request.user)
@@ -51,8 +69,14 @@ class TradeViewSet(viewsets.ModelViewSet):
     filterset_fields = ['symbol', 'action']
     ordering_fields = ['timestamp']
 
+    @method_decorator(cache_page(60 * 15))  # Кэширование на 15 минут
+    def list(self, request, *args, **kwargs):
+        return super().list(request, *args, **kwargs)
+
     def get_queryset(self):
-        return self.queryset.filter(strategy__user=self.request.user)
+        return super().get_queryset().select_related('user', 'strategy').prefetch_related(
+            Prefetch('strategy__historical_data', queryset=HistoricalData.objects.only('id', 'symbol', 'timestamp'))  # Оптимизация для стратегий и данных, с ограничением полей
+        )
 
 class HistoricalDataViewSet(viewsets.ModelViewSet):
     queryset = HistoricalData.objects.all()
@@ -62,8 +86,12 @@ class HistoricalDataViewSet(viewsets.ModelViewSet):
     filterset_fields = ['symbol']
     ordering_fields = ['timestamp']
 
+    @method_decorator(cache_page(60 * 15))  # Кэширование на 15 минут
+    def list(self, request, *args, **kwargs):
+        return super().list(request, *args, **kwargs)
+
     def get_queryset(self):
-        return self.queryset.filter(user=self.request.user)
+        return self.queryset.filter(user=self.request.user).select_related('user')  # Оптимизация FK
 
 class PredictionViewSet(viewsets.ModelViewSet):
     queryset = Prediction.objects.all()
@@ -72,8 +100,12 @@ class PredictionViewSet(viewsets.ModelViewSet):
     filter_backends = [DjangoFilterBackend, OrderingFilter]
     ordering_fields = ['timestamp']
 
+    @method_decorator(cache_page(60 * 15))  # Кэширование на 15 минут
+    def list(self, request, *args, **kwargs):
+        return super().list(request, *args, **kwargs)
+
     def get_queryset(self):
-        return self.queryset.filter(user=self.request.user)
+        return self.queryset.filter(user=self.request.user).select_related('user')  # Оптимизация FK
 
 class AlertViewSet(viewsets.ModelViewSet):
     queryset = Alert.objects.all()
@@ -83,8 +115,12 @@ class AlertViewSet(viewsets.ModelViewSet):
     filterset_fields = ['is_active', 'symbol']
     ordering_fields = ['created_at']
 
+    @method_decorator(cache_page(60 * 15))  # Кэширование на 15 минут
+    def list(self, request, *args, **kwargs):
+        return super().list(request, *args, **kwargs)
+
     def get_queryset(self):
-        return self.queryset.filter(user=self.request.user)
+        return self.queryset.filter(user=self.request.user).select_related('user')  # Оптимизация FK
 
     def perform_create(self, serializer):
         serializer.save(user=self.request.user)
@@ -114,3 +150,16 @@ def check_alerts_view(request):
     """Проверить алерты (асинхронно)."""
     check_alerts.delay()
     return Response({'status': 'Alerts check started'}, status=status.HTTP_200_OK)
+
+# Async view для тяжелых операций
+@sync_to_async
+def heavy_task():
+    """Имитация тяжелой операции (e.g., RL-обучение). Замените на реальную логику (e.g., вызов Stable Baselines3)."""
+    import time
+    time.sleep(5)  # Имитация задержки
+    return {"status": "completed"}
+
+async def async_train_rl(request):
+    """Асинхронный эндпоинт для запуска RL-обучения. Доступен по /api/async-train/."""
+    result = await heavy_task()
+    return JsonResponse(result)

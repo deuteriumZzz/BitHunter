@@ -14,3 +14,5 @@ pandas==2.0
 python-telegram-bot==20.0
 django-cors-headers==4.1
 environ==1.0
+redis==4.5.5
+daphne==4.0.0
