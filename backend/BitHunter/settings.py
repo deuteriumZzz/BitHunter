@@ -1,14 +1,10 @@
 import os
 from pathlib import Path
-import environ
-
-env = environ.Env(DEBUG=(bool, False))
-environ.Env.read_env()
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 
-SECRET_KEY = env('SECRET_KEY', default='your-secret-key')
-DEBUG = env.bool('DEBUG', default=True)
+SECRET_KEY = os.getenv('SECRET_KEY', 'your-secret-key')
+DEBUG = os.getenv('DEBUG', 'True') == 'True'
 ALLOWED_HOSTS = ['*']
 
 INSTALLED_APPS = [
@@ -18,22 +14,20 @@ INSTALLED_APPS = [
     'django.contrib.sessions',
     'django.contrib.messages',
     'django.contrib.staticfiles',
-    'channels',
+    'rest_framework',  # ДОБАВЛЕНО: Для REST API
+    'rest_framework.authtoken',  # ДОБАВЛЕНО: Для токен-аутентификации
     'trading',
     'analytics',
     'alerts',
-    'rest_framework',
-    'corsheaders',
+    'celery',
 ]
 
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
-    'corsheaders.middleware.CorsMiddleware',
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
     'django.contrib.auth.middleware.AuthenticationMiddleware',
-    'django.contrib.messages.middleware.AuthenticationMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
 ]
@@ -57,7 +51,6 @@ TEMPLATES = [
 ]
 
 WSGI_APPLICATION = 'BitHunter.wsgi.application'
-ASGI_APPLICATION = 'BitHunter.asgi.application'
 
 DATABASES = {
     'default': {
@@ -79,36 +72,22 @@ USE_I18N = True
 USE_TZ = True
 
 STATIC_URL = 'static/'
-STATIC_ROOT = BASE_DIR / 'staticfiles'
-
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
-# Channels
-CHANNEL_LAYERS = {
-    'default': {
-        'BACKEND': 'channels_redis.core.RedisChannelLayer',
-        'CONFIG': {
-            'hosts': [('redis', 6379)],
-        },
-    },
+# ДОБАВЛЕНО: Настройки для DRF и аутентификации
+REST_FRAMEWORK = {
+    'DEFAULT_AUTHENTICATION_CLASSES': [
+        'rest_framework.authentication.TokenAuthentication',
+    ],
+    'DEFAULT_PERMISSION_CLASSES': [
+        'rest_framework.permissions.IsAuthenticated',
+    ],
 }
 
-# Celery
-CELERY_BROKER_URL = 'redis://redis:6379/0'
-CELERY_RESULT_BACKEND = 'redis://redis:6379/0'
+# ДОБАВЛЕНО: Настройки для Celery
+CELERY_BROKER_URL = os.getenv('REDIS_URL', 'redis://localhost:6379/0')
+CELERY_RESULT_BACKEND = os.getenv('REDIS_URL', 'redis://localhost:6379/0')
 
-# CORS
-CORS_ALLOWED_ORIGINS = ['http://localhost:3000']
-
-# Старый код: Шифрование
-FERNET_KEY = env('FERNET_KEY', default=b'your-fernet-key-here')
-
-# API-ключи из старого
-NEWS_API_KEY = env('NEWS_API_KEY')
-TELEGRAM_BOT_TOKEN = env('TELEGRAM_BOT_TOKEN')
-TELEGRAM_CHAT_ID = env('TELEGRAM_CHAT_ID')
-
-# Бот из старого
-DEMO_MODE = env.bool('DEMO_MODE', default=True)
-MAX_AMOUNT = env.float('MAX_AMOUNT', default=0.001)
-
+# ДОБАВЛЕНО: Настройки для RL и новостей
+NEWS_API_KEY = os.getenv('NEWS_API_KEY')
+DEMO_MODE = os.getenv('DEMO_MODE', 'False').lower() == 'true'
