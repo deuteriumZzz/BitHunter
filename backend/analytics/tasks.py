@@ -1,6 +1,6 @@
 from celery import shared_task
-from .models import HistoricalData, Prediction
-from .trading_env import TradingEnv  # Импорт среды
+from .models import AnalyticsData, Prediction
+from analytics.trading_env import TradingEnv  # Импорт среды
 from stable_baselines3 import PPO
 import numpy as np
 from textblob import TextBlob  # Для sentiment-анализа новостей
@@ -32,7 +32,7 @@ def fetch_historical_data():
             if strategy.exchange:  # Используем property exchange из models.py
                 data = strategy.exchange.fetch_ohlcv(strategy.symbol, timeframe='1h', limit=100)
                 for candle in data:
-                    HistoricalData.objects.create(
+                    AnalyticsData.objects.create(
                         symbol=strategy.symbol,
                         timestamp=candle[0] / 1000,  # Преобразование из ms в s
                         price=candle[4],  # Close price
@@ -75,7 +75,7 @@ def train_ml_model():
 def predict_price():
     """Предсказать цену с RL."""
     try:
-        last_hist = HistoricalData.objects.last()
+        last_hist = AnalyticsData.objects.last()
         if not last_hist:
             return "No historical data"
         
