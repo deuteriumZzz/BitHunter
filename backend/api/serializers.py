@@ -1,6 +1,6 @@
 from rest_framework import serializers
 from trading.models import ApiKey, Strategy, Trade
-from analytics.models import HistoricalData, Prediction
+from analytics.models import AnalyticsData, Prediction  # Обновлено: AnalyticsData вместо HistoricalData
 from alerts.models import Alert
 
 class ApiKeySerializer(serializers.ModelSerializer):
@@ -24,10 +24,12 @@ class TradeSerializer(serializers.ModelSerializer):
         model = Trade
         fields = ['id', 'strategy', 'symbol', 'action', 'amount', 'price', 'profit_loss', 'timestamp']
 
-class HistoricalDataSerializer(serializers.ModelSerializer):
+# ДОБАВЛЕНО: Сериализатор для новой модели AnalyticsData (замена HistoricalDataSerializer)
+class AnalyticsSerializer(serializers.ModelSerializer):
     class Meta:
-        model = HistoricalData
-        fields = ['id', 'symbol', 'timestamp', 'price', 'volume', 'user']
+        model = AnalyticsData
+        fields = ['id', 'user', 'symbol', 'data', 'timestamp']
+        read_only_fields = ['user']  # Пользователь устанавливается автоматически из запроса
 
 class PredictionSerializer(serializers.ModelSerializer):
     class Meta:

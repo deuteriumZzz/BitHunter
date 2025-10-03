@@ -1,18 +1,43 @@
 from django.db import models
 from django.contrib.auth.models import User
 
-class HistoricalData(models.Model):
-    symbol = models.CharField(max_length=10)
-    timestamp = models.DateTimeField()
-    price = models.FloatField()
-    volume = models.FloatField()
-    user = models.ForeignKey(User, on_delete=models.CASCADE)
+class AnalyticsData(models.Model):
+    user = models.ForeignKey(User, on_delete=models.CASCADE, verbose_name="Пользователь")
+    symbol = models.CharField(max_length=10, verbose_name="Символ")
+    data = models.JSONField(verbose_name="Данные")  # Хранение исторических данных, предсказаний и т.д. (из второй версии)
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name="Дата создания")
+
+    class Meta:
+        indexes = [
+            models.Index(fields=['symbol', 'user']),  # Из второй версии
+        ]
+        verbose_name = "Аналитические данные"
+        verbose_name_plural = "Аналитические данные"
+
+    def __str__(self):
+        return f"{self.user.username} - {self.symbol} at {self.created_at}"
 
 class Prediction(models.Model):
-    timestamp = models.DateTimeField(auto_now_add=True)
-    predicted_price = models.FloatField()
-    action = models.IntegerField()  # 0=hold, 1=buy, 2=sell (ДОБАВЛЕНО: Для RL)
-    user = models.ForeignKey(User, on_delete=models.CASCADE)
+    # Выборы для action (0=hold, 1=buy, 2=sell)
+    ACTION_CHOICES = [
+        (0, 'Hold'),
+        (1, 'Buy'),
+        (2, 'Sell'),
+    ]
 
-    # ДОБАВЛЕНО: Поле для profit/loss
-    profit_loss = models.FloatField(default=0.0)
+    user = models.ForeignKey(User, on_delete=models.CASCADE, verbose_name="Пользователь")
+    symbol = models.CharField(max_length=10, blank=True, verbose_name="Символ")  # Добавлено для связи
+    timestamp = models.DateTimeField(auto_now_add=True, verbose_name="Время предсказания")
+    predicted_price = models.FloatField(verbose_name="Предсказанная цена")
+    action = models.IntegerField(choices=ACTION_CHOICES, verbose_name="Рекомендация")  # Из первой версии, с choices
+    profit_loss = models.FloatField(default=0.0, verbose_name="Прибыль/убыток")  # Из первой версии
+
+    class Meta:
+        indexes = [
+            models.Index(fields=['user', 'timestamp']),
+        ]
+        verbose_name = "Предсказание"
+        verbose_name_plural = "Предсказания"
+
+    def __str__(self):
+        return f"{self.user.username} - {self.get_action_display()} at {self.predicted_price}"
