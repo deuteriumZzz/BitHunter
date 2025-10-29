@@ -1,5 +1,11 @@
+"""
+URL-конфигурация для приложения API.
+Определяет маршруты для ViewSets и пользовательских эндпоинтов.
+"""
+
 from django.urls import path, include
 from rest_framework.routers import DefaultRouter
+
 from . import views
 from .views import async_train_rl
 
@@ -8,7 +14,7 @@ router = DefaultRouter()
 router.register(r'apikeys', views.ApiKeyViewSet)
 router.register(r'strategies', views.StrategyViewSet)
 router.register(r'trades', views.TradeViewSet)
-router.register(r'historicaldata', views.HistoricalDataViewSet)
+router.register(r'analyticsdata', views.AnalyticsDataViewSet)
 router.register(r'predictions', views.PredictionViewSet)
 router.register(r'alerts', views.AlertViewSet)
 
