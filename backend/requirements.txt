@@ -1,28 +1,39 @@
-Django==4.2.7
-djangorestframework==3.14.0
-psycopg2-binary==2.9.7
-django-filter==23.5
-django-ratelimit==4.1.0
-django-cryptography==1.0
-django-otp==2.0.0
-channels==4.0.0
-channels-redis==4.1.0
-celery==5.3.4
-redis==5.0.1
-django-logging==0.9.3
-sentry-sdk==1.40.0
-django-prometheus==2.3.1
-tensorflow==2.15.0
-pytest==7.4.3
-pytest-django==4.5.2
-djangorestframework-simplejwt==5.3.0
-ccxt==4.2.0
-pyotp
-boto3
-pytest
-pytest-django
-django-prometheus
-sentry-sdk
-drf-spectacular
-redis
-celery
+# Core Django and essentials
+Django==4.2.7  # Основной фреймворк
+djangorestframework==3.14.0  # Для REST API
+djangorestframework-simplejwt==5.3.0  # JWT аутентификация для API
+django-filter==23.5  # Фильтры для DRF
+drf-spectacular==0.26.5  # Документация API (Swagger/OpenAPI)
+
+# Database
+psycopg2-binary==2.9.7  # Драйвер для PostgreSQL
+
+# Authentication and Security
+django-otp==2.0.0  # Двухфакторная аутентификация
+pyotp==2.9.0  # Генерация OTP-кодов (добавил версию)
+django-cryptography==1.0  # Шифрование данных
+django-ratelimit==4.1.0  # Ограничение запросов
+
+# Async and Channels (для WebSockets и real-time)
+channels==4.0.0  # Django Channels для асинхронности
+channels-redis==4.1.0  # Redis backend для Channels
+
+# Task Queue
+celery==5.3.4  # Очереди задач
+redis==5.0.1  # Redis как брокер и кэш
+
+# Monitoring and Logging
+django-prometheus==2.3.1  # Метрики для Prometheus
+sentry-sdk==1.40.0  # Отправка ошибок в Sentry
+django-logging==0.9.3  # Расширенное логирование
+
+# ML and Crypto Trading
+tensorflow==2.15.0  # Машинное обучение
+ccxt==4.2.0  # Библиотека для крипто-бирж (торговля)
+
+# AWS and Storage
+boto3==1.34.0  # AWS SDK (для S3 и т.д.)
+
+# Testing
+pytest==7.4.3  # Основной фреймворк для тестов
+pytest-django==4.5.2  # Интеграция pytest с Django
