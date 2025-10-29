@@ -1,17 +1,25 @@
 import requests
-from textblob import TextBlob
+
+from asgiref.sync import async_to_sync
 from celery import shared_task
+from channels.layers import get_channel_layer
 from django.conf import settings
 from django.core.cache import cache
-from .models import News
 from django.utils import timezone
-from channels.layers import get_channel_layer
-from asgiref.sync import async_to_sync
+from textblob import TextBlob
+
+from .models import News
+
 
 @shared_task(bind=True, max_retries=3)
 def get_news_sentiment(self, symbol, user_id=None):
     """
-    Задача с кешированием и rate-limiting.
+    Задача для получения и анализа sentiment новостей по символу.
+
+    Получает новости из NewsAPI, анализирует их sentiment с помощью TextBlob,
+    сохраняет в базу данных и отправляет обновления через WebSocket.
+    Использует кеширование для избежания повторных запросов.
+    С параметром rate-limiting через retry.
     """
     api_key = getattr(settings, 'NEWS_API_KEY', None)
     if not api_key:
@@ -23,7 +31,11 @@ def get_news_sentiment(self, symbol, user_id=None):
         print(f"Используем кеш для {symbol}")
         return cached_data
 
-    url = f"https://newsapi.org/v2/everything?q={symbol}&apiKey={api_key}&language=en&sortBy=publishedAt&pageSize=10"
+    url = (
+        f"https://newsapi.org/v2/everything?"
+        f"q={symbol}&apiKey={api_key}&language=en&"
+        f"sortBy=publishedAt&pageSize=10"
+    )
     try:
         response = requests.get(url, timeout=10)
         response.raise_for_status()
@@ -81,6 +93,12 @@ def get_news_sentiment(self, symbol, user_id=None):
             print(f"Сохранена новость: {news}")
 
     # Кешировать средний sentiment на 1 час
-    avg_sentiment = sum(sentiment_list) / len(sentiment_list) if sentiment_list else 0.0
+    avg_sentiment = (
+        sum(sentiment_list) / len(sentiment_list)
+        if sentiment_list else 0.0
+    )
     cache.set(cache_key, avg_sentiment, 3600)
-    print(f"Обработано {len(articles)} новостей для {symbol}, средний sentiment: {avg_sentiment}")
+    print(
+        f"Обработано {len(articles)} новостей для {symbol}, "
+        f"средний sentiment: {avg_sentiment}"
+    )
