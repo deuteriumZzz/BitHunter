@@ -1,5 +1,13 @@
 from django.urls import path
+
 from . import views
+
+
+"""
+URL-шаблоны для приложения alerts.
+
+Определяет маршруты для создания оповещений и отправки уведомлений.
+"""
 
 urlpatterns = [
     path('create/', views.create_alert, name='create_alert'),

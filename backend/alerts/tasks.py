@@ -1,13 +1,20 @@
 from celery import shared_task
-from django.core.cache import cache
-from django.conf import settings
 import ccxt
-import json
-from alerts.models import AlertRule, Notification  # Импортируем модели из alerts.models
+
+from alerts.models import AlertRule, Notification
+from django.conf import settings
+from django.core.cache import cache
 from django.utils import timezone
+
 
 @shared_task
 def check_alerts():
+    """
+    Задача Celery для проверки активных правил оповещений.
+    
+    Получает активные правила оповещений, проверяет условия на основе текущих цен
+    и создает уведомления при срабатывании правил.
+    """
     alert_rules = AlertRule.objects.filter(is_active=True).select_related('user')
     for rule in alert_rules:
         price = get_current_price(rule.symbol)
@@ -35,8 +42,14 @@ def check_alerts():
             print(f"Notification created: {notification}")
             cache.set(f'previous_price_{rule.symbol}', price, timeout=3600)
 
+
 @shared_task
 def send_notifications():
+    """
+    Задача Celery для отправки неотправленных уведомлений.
+    
+    Получает неотправленные уведомления и помечает их как отправленные после обработки.
+    """
     notifications = Notification.objects.filter(is_sent=False)
     for notification in notifications:
         # Логика отправки (email, WebSocket и т.д.)
@@ -45,7 +58,17 @@ def send_notifications():
         notification.sent_at = timezone.now()
         notification.save()
 
+
 def get_current_price(symbol):
+    """
+    Получает текущую цену криптовалютной пары с Binance.
+    
+    Args:
+        symbol (str): Символ криптовалютной пары (например, 'BTC/USDT').
+    
+    Returns:
+        float or None: Текущая цена или None в случае ошибки.
+    """
     try:
         exchange = ccxt.binance()
         ticker = exchange.fetch_ticker(symbol)
