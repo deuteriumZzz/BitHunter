@@ -1,9 +1,13 @@
 from celery import shared_task
 from .models import AnalyticsData, Prediction
+from news.models import News  # Добавлен импорт для доступа к News
 from analytics.trading_env import TradingEnv  # Импорт среды
 from stable_baselines3 import PPO
 import numpy as np
 from textblob import TextBlob  # Для sentiment-анализа новостей
+from django.utils import timezone
+from django.db.models import Avg
+from datetime import timedelta
 import os
 import logging
 
@@ -109,4 +113,45 @@ def train_model_on_trade(trade_result, historical_data, news_data):
         return "Model updated after trade"
     except Exception as e:
         logger.error(f"Error training on trade: {e}")
+        return f"Error: {e}"
+
+# Новая задача для интеграции с News (не меняет логику существующих задач)
+@shared_task
+def analyze_data_with_news(symbol, user_id=None):
+    """
+    Анализ данных с использованием sentiment из новостей для RL-предсказаний.
+    Обновляет AnalyticsData и связывает с News.
+    """
+    try:
+        # Получить данные за последние 24 часа (фильтр по символу и пользователю)
+        past_24h = timezone.now() - timedelta(hours=24)
+        news_qs = News.objects.filter(symbol=symbol, timestamp__gte=past_24h)
+        if user_id:
+            # Если указан user_id, фильтруем новости по пользователю (если поле user_id в News)
+            news_qs = news_qs.filter(user_id=user_id)
+        
+        avg_sentiment = news_qs.aggregate(Avg('sentiment'))['sentiment__avg'] or 0.0
+
+        # Создать или обновить AnalyticsData (используем get_or_create для минимального воздействия)
+        analytics, created = AnalyticsData.objects.get_or_create(
+            symbol=symbol,
+            user_id=user_id,  # Связь с пользователем
+            defaults={
+                'data': {},  # Пустой JSON по умолчанию, если новый
+                'news_sentiment': avg_sentiment,
+            }
+        )
+        if not created:
+            analytics.news_sentiment = avg_sentiment
+            analytics.save()
+
+        # Связать новости (ManyToMany)
+        analytics.related_news.set(news_qs)
+
+        # Здесь можно интегрировать с RL (например, передать avg_sentiment в модель)
+        # prediction = your_rl_model.predict(data_with_sentiment=avg_sentiment)
+        logger.info(f"Анализ для {symbol}: средний sentiment {avg_sentiment}, связанных новостей: {news_qs.count()}")
+        return f"Analyzed {symbol} with news sentiment: {avg_sentiment}"
+    except Exception as e:
+        logger.error(f"Error in analyze_data_with_news: {e}")
         return f"Error: {e}"

@@ -1,15 +1,20 @@
 from django.db import models
 from django.contrib.auth.models import User
+from news.models import News  # Добавлен импорт для связи с News
 
 class AnalyticsData(models.Model):
     user = models.ForeignKey(User, on_delete=models.CASCADE, verbose_name="Пользователь")
     symbol = models.CharField(max_length=10, verbose_name="Символ")
     data = models.JSONField(verbose_name="Данные")  # Хранение исторических данных, предсказаний и т.д. (из второй версии)
     created_at = models.DateTimeField(auto_now_add=True, verbose_name="Дата создания")
+    # Новые поля для связи с новостями (минимальные изменения, не влияют на существующую логику)
+    news_sentiment = models.FloatField(default=0.0, help_text="Средний sentiment новостей за период")
+    related_news = models.ManyToManyField(News, blank=True, help_text="Связанные новости")
 
     class Meta:
         indexes = [
             models.Index(fields=['symbol', 'user']),  # Из второй версии
+            models.Index(fields=['symbol', 'created_at']),  # Добавлен для оптимизации запросов по новостям
         ]
         verbose_name = "Аналитические данные"
         verbose_name_plural = "Аналитические данные"
