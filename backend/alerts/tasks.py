@@ -1,47 +1,55 @@
-import telegram
-import os
-import logging
 from celery import shared_task
+from django.core.cache import cache
 from django.conf import settings
-from accounts.models import UserProfile
-from .models import AlertRule, Notification
 import ccxt
-
-logger = logging.getLogger(__name__)
-
-@shared_task
-def send_message(user, message):
-    bot_token = settings.TELEGRAM_BOT_TOKEN
-    if not bot_token:
-        logger.warning("TELEGRAM_BOT_TOKEN not set")
-        return
-    try:
-        profile = UserProfile.objects.get(user=user)
-        chat_id = profile.telegram_chat_id
-        if not chat_id:
-            logger.info(f"No chat_id for user {user.username}")
-            return
-        bot = telegram.Bot(token=bot_token)
-        bot.send_message(chat_id=chat_id, text=message)
-        logger.info(f"Message sent to {user.username}: {message}")
-    except UserProfile.DoesNotExist:
-        logger.error(f"UserProfile not found for user {user}")
-    except Exception as e:
-        logger.error(f"Error sending message: {e}")
+import json
+from alerts.models import AlertRule, Notification  # Импортируем модели из alerts.models
+from django.utils import timezone
 
 @shared_task
 def check_alerts():
-    exchange = ccxt.binance()
+    alert_rules = AlertRule.objects.filter(is_active=True).select_related('user')
+    for rule in alert_rules:
+        price = get_current_price(rule.symbol)
+        if price is None:
+            continue
+        triggered = False
+        if rule.condition == 'above' and price > rule.value:
+            triggered = True
+        elif rule.condition == 'below' and price < rule.value:
+            triggered = True
+        elif rule.condition == 'change_percent':
+            previous_price = cache.get(f'previous_price_{rule.symbol}')
+            if previous_price:
+                change = ((price - previous_price) / previous_price) * 100
+                if abs(change) >= abs(rule.value):
+                    triggered = True
+        if triggered:
+            message = f"Alert: {rule.symbol} {rule.condition} {rule.value}. Current price: {price}"
+            notification = Notification.objects.create(
+                user=rule.user,
+                alert_rule=rule,
+                message=message,
+            )
+            # Отправка уведомления (здесь можно добавить email или Telegram)
+            print(f"Notification created: {notification}")
+            cache.set(f'previous_price_{rule.symbol}', price, timeout=3600)
+
+@shared_task
+def send_notifications():
+    notifications = Notification.objects.filter(is_sent=False)
+    for notification in notifications:
+        # Логика отправки (email, WebSocket и т.д.)
+        print(f"Sending notification: {notification.message}")
+        notification.is_sent = True
+        notification.sent_at = timezone.now()
+        notification.save()
+
+def get_current_price(symbol):
     try:
-        for rule in AlertRule.objects.select_related('user').all():  # Оптимизация запроса
-            ticker = exchange.fetch_ticker(rule.symbol)
-            if ticker['last'] >= rule.threshold:
-                notification = Notification.objects.create(
-                    rule=rule, 
-                    message=f'Alert for {rule.symbol}: price {ticker["last"]} reached threshold {rule.threshold}'
-                )
-                # Отправка уведомления в Telegram
-                send_message.delay(rule.user, notification.message)
-                logger.info(f"Alert triggered for {rule.symbol}")
+        exchange = ccxt.binance()
+        ticker = exchange.fetch_ticker(symbol)
+        return ticker['last']
     except Exception as e:
-        logger.error(f"Error in check_alerts: {e}")
+        print(f"Error fetching price for {symbol}: {e}")
+        return None
