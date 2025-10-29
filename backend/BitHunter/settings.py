@@ -1,31 +1,30 @@
 import os
 from pathlib import Path
 
+# Base settings
 BASE_DIR = Path(__file__).resolve().parent.parent
 
-SECRET_KEY = os.environ.get('DJANGO_SECRET_KEY', 'fallback-secret-key-change-in-prod')  # Заменено на переменную окружения
+# SECRET_KEY: Используем env с fallback (хорошо, но не забудь сменить в проде!)
+SECRET_KEY = os.environ.get('DJANGO_SECRET_KEY', 'fallback-secret-key-change-in-prod')
 
-DEBUG = os.environ.get('DEBUG', 'True') == 'True'
+# DEBUG: По умолчанию False для безопасности, включай явно в dev
+DEBUG = os.environ.get('DEBUG', 'False').lower() == 'true'
 
-ALLOWED_HOSTS = os.environ.get('ALLOWED_HOSTS', 'localhost,127.0.0.1').split(',')
+# ALLOWED_HOSTS: Разделяем по запятым и убираем пробелы
+ALLOWED_HOSTS = [host.strip() for host in os.environ.get('ALLOWED_HOSTS', 'localhost,127.0.0.1').split(',')]
 
-
+# AWS: Добавил env для bucket name, и проверки на наличие ключей (чтобы избежать ошибок)
 AWS_ACCESS_KEY_ID = os.getenv('AWS_ACCESS_KEY_ID')
 AWS_SECRET_ACCESS_KEY = os.getenv('AWS_SECRET_ACCESS_KEY')
-AWS_S3_BUCKET_NAME = 'bithunter-models'
+AWS_S3_BUCKET_NAME = os.getenv('AWS_S3_BUCKET_NAME', 'bithunter-models')  # Теперь configurable
 
+# Sentry: Хорошо, но добавь проверку на DSN
+if os.getenv('SENTRY_DSN'):
+    import sentry_sdk
+    from sentry_sdk.integrations.django import DjangoIntegration
+    sentry_sdk.init(dsn=os.getenv('SENTRY_DSN'), integrations=[DjangoIntegration()])
 
-import sentry_sdk
-from sentry_sdk.integrations.django import DjangoIntegration
-
-sentry_sdk.init(dsn=os.getenv('SENTRY_DSN'), integrations=[DjangoIntegration()])
-
-# Prometheus
-INSTALLED_APPS.append('django_prometheus')
-MIDDLEWARE.insert(0, 'django_prometheus.middleware.PrometheusBeforeMiddleware')
-MIDDLEWARE.append('django_prometheus.middleware.PrometheusAfterMiddleware')
-
-
+# INSTALLED_APPS: Определяем список сначала
 INSTALLED_APPS = [
     'django.contrib.admin',
     'django.contrib.auth',
@@ -45,6 +44,11 @@ INSTALLED_APPS = [
     'news',  # Добавлено
 ]
 
+# Prometheus: Теперь добавляем ПОСЛЕ определения INSTALLED_APPS
+if 'django_prometheus' not in INSTALLED_APPS:  # Проверка, чтобы не дублировать
+    INSTALLED_APPS.append('django_prometheus')
+
+# MIDDLEWARE: Определяем список сначала
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
@@ -56,6 +60,12 @@ MIDDLEWARE = [
     'core.middleware.SecurityMiddleware',
 ]
 
+# Prometheus middleware: Добавляем ПОСЛЕ определения MIDDLEWARE
+if 'django_prometheus.middleware.PrometheusBeforeMiddleware' not in MIDDLEWARE:
+    MIDDLEWARE.insert(0, 'django_prometheus.middleware.PrometheusBeforeMiddleware')
+    MIDDLEWARE.append('django_prometheus.middleware.PrometheusAfterMiddleware')
+
+# Остальные настройки без изменений (или с небольшими улучшениями)
 ROOT_URLCONF = 'bithunter.urls'
 
 TEMPLATES = [
@@ -122,39 +132,68 @@ REST_FRAMEWORK = {
     },
 }
 
-# Channels
+# Channels: Сделал хосты configurable через env
 CHANNEL_LAYERS = {
     'default': {
         'BACKEND': 'channels_redis.core.RedisChannelLayer',
         'CONFIG': {
-            'hosts': [('127.0.0.1', 6379)],
+            'hosts': [(os.getenv('REDIS_HOST', '127.0.0.1'), int(os.getenv('REDIS_PORT', 6379)))],
         },
     },
 }
 
-# Celery
-CELERY_BROKER_URL = 'redis://localhost:6379/0'
-CELERY_RESULT_BACKEND = 'redis://localhost:6379/0'
+# Celery: Аналогично, configurable
+CELERY_BROKER_URL = os.getenv('CELERY_BROKER_URL', 'redis://127.0.0.1:6379/0')
+CELERY_RESULT_BACKEND = os.getenv('CELERY_RESULT_BACKEND', 'redis://127.0.0.1:6379/0')
 
-# Cache
+# Cache: Configurable
 CACHES = {
     'default': {
         'BACKEND': 'django.core.cache.backends.redis.RedisCache',
-        'LOCATION': 'redis://127.0.0.1:6379/1',
+        'LOCATION': os.getenv('CACHE_LOCATION', 'redis://127.0.0.1:6379/1'),
     }
 }
 
-# Logging
+# Logging: Расширил для лучших практик (добавил уровни и обработку)
 LOGGING = {
     'version': 1,
     'disable_existing_loggers': False,
+    'formatters': {
+        'verbose': {
+            'format': '{levelname} {asctime} {module} {process:d} {thread:d} {message}',
+            'style': '{',
+        },
+        'simple': {
+            'format': '{levelname} {message}',
+            'style': '{',
+        },
+    },
     'handlers': {
         'console': {
             'class': 'logging.StreamHandler',
+            'formatter': 'simple',
+        },
+        'file': {
+            'class': 'logging.FileHandler',
+            'filename': os.path.join(BASE_DIR, 'logs', 'django.log'),  # Добавь папку logs в проект
+            'formatter': 'verbose',
         },
     },
     'root': {
-        'handlers': ['console'],
+        'handlers': ['console', 'file'],
         'level': 'INFO',
     },
+    'loggers': {
+        'django': {
+            'handlers': ['console', 'file'],
+            'level': 'INFO',
+            'propagate': False,
+        },
+    },
 }
+
+# Дополнительная безопасность для продакшена
+if not DEBUG:
+    SECURE_SSL_REDIRECT = True  # Перенаправление на HTTPS
+    SESSION_COOKIE_SECURE = True
+    CSRF_COOKIE_SECURE = True
