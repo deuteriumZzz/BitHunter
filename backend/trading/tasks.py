@@ -1,38 +1,86 @@
-from celery import shared_task
-from .models import Trade, Strategy  # Исправлено: Bot → Strategy
-from analytics.tasks import train_model_on_trade  # ДОБАВЛЕНО
+"""
+Модуль задач для Celery в приложении трейдинга.
+
+Определяет асинхронные задачи для размещения трейдов (с симуляцией или реальными ордерами),
+а также для запуска стратегий с предсказаниями RL-модели. Включает интеграцию с обучением модели.
+"""
+
 import ccxt
+
+from celery import shared_task
 from django.conf import settings
 
+from .models import Strategy, Trade
+from analytics.tasks import predict_price, train_model_on_trade
+
+
 @shared_task
-def place_trade(action, strategy_id):  # Исправлено: bot_id → strategy_id
-    """Разместить сделку и обучить модель."""
-    strategy = Strategy.objects.get(id=strategy_id)  # Исправлено: Bot → Strategy, bot_id → strategy_id
+def place_trade(action, strategy_id):
+    """
+    Размещает трейд на основе действия и ID стратегии.
+
+    В режиме демо симулирует трейд с фиктивной ценой. В реальном режиме создаёт ордер
+    на бирже через ccxt. После размещения трейда запускает асинхронное обучение RL-модели
+    с результатами, историческими данными и новостями.
+
+    Параметры:
+    - action (int): 1 для покупки (long), 2 для продажи (short), иначе hold.
+    - strategy_id (int): ID стратегии.
+
+    Возвращает:
+    - str: Сообщение о размещённом трейде или "Hold".
+    """
+    strategy = Strategy.objects.get(id=strategy_id)
     if settings.DEMO_MODE:
-        # Симуляция
+        # Симуляция трейда
         price = 50000  # Фиктивная цена
-        trade = Trade.objects.create(strategy=strategy, action='long' if action == 1 else 'short', amount=0.01, price=price)  # Исправлено: bot → strategy, type → action
+        trade = Trade.objects.create(
+            strategy=strategy,
+            action='long' if action == 1 else 'short',
+            amount=0.01,
+            price=price
+        )
     else:
         if action == 1:
-            order = strategy.exchange.create_market_buy_order('BTC/USDT', 0.01)  # Исправлено: bot → strategy
-            trade = Trade.objects.create(strategy=strategy, action='long', amount=0.01, price=order['price'])  # Исправлено: bot → strategy, type → action
+            order = strategy.exchange.create_market_buy_order('BTC/USDT', 0.01)
+            trade = Trade.objects.create(
+                strategy=strategy,
+                action='long',
+                amount=0.01,
+                price=order['price']
+            )
         elif action == 2:
-            order = strategy.exchange.create_market_sell_order('BTC/USDT', 0.01)  # Исправлено: bot → strategy
-            trade = Trade.objects.create(strategy=strategy, action='short', amount=0.01, price=order['price'])  # Исправлено: bot → strategy, type → action
+            order = strategy.exchange.create_market_sell_order('BTC/USDT', 0.01)
+            trade = Trade.objects.create(
+                strategy=strategy,
+                action='short',
+                amount=0.01,
+                price=order['price']
+            )
         else:
             return "Hold"
 
-    # ДОБАВЛЕНО: Обучение после сделки
-    trade_result = {'profit': trade.price * 0.01 if trade.action == 'short' else -trade.price * 0.01}  # Исправлено: type → action
+    # Обучение модели после размещения трейда
+    trade_result = {'profit': trade.price * 0.01 if trade.action == 'short' else -trade.price * 0.01}
     historical_data = [[trade.price, 1000]]
     news_data = ["Market news"]
     train_model_on_trade.delay(trade_result, historical_data, news_data)
-    return f"Trade placed: {trade.action}"  # Исправлено: type → action
+    return f"Trade placed: {trade.action}"
+
 
 @shared_task
-def run_bot(strategy_id):  # Исправлено: bot_id → strategy_id
-    """Запустить бота с RL."""
-    from analytics.tasks import predict_price
+def run_bot(strategy_id):
+    """
+    Запускает стратегию с предсказанием RL-модели.
+
+    Получает предсказание действия от RL-модели и асинхронно размещает трейд.
+
+    Параметры:
+    - strategy_id (int): ID стратегии.
+
+    Возвращает:
+    - str: Сообщение о запуске бота.
+    """
     action = predict_price.delay().get()
-    place_trade.delay(action, strategy_id)  # Исправлено: bot_id → strategy_id
+    place_trade.delay(action, strategy_id)
     return "Bot run with RL prediction"
