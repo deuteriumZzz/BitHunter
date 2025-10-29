@@ -1,13 +1,24 @@
-# analytics/trading_env.py
-import gym
+"""
+Модуль, реализующий среду для обучения с подкреплением (RL) на основе Gym.
+Среда симулирует торговлю криптовалютой с использованием исторических данных
+и анализа настроений новостей.
+"""
+
 import numpy as np
+
+import gym
 from gym import spaces
+
 from django.core.exceptions import ValidationError
-from .models import AnalyticsData, Prediction  # Исправлено: HistoricalData → AnalyticsData
+
+from .models import AnalyticsData, Prediction
+
 
 class TradingEnv(gym.Env):
     """
-    RL-среда для симуляции торговли криптовалютой с использованием исторических данных и sentiment-анализа новостей.
+    RL-среда для симуляции торговли криптовалютой с использованием
+    исторических данных и sentiment-анализа новостей.
+
     Фичи:
     - Observation: нормализованные [price, volume, sentiment, balance]
     - Actions: 0=hold, 1=buy (long), 2=sell (short)
@@ -15,44 +26,60 @@ class TradingEnv(gym.Env):
     - Интеграция с Django: опциональное сохранение Prediction в БД
     - Обработка ошибок и нормализация
     """
-    
-    def __init__(self, historical_data, news_features, initial_balance=10000, user=None):
+
+    def __init__(
+        self,
+        historical_data,
+        news_features,
+        initial_balance=10000,
+        user=None
+    ):
+        """
+        Инициализация среды.
+
+        :param historical_data: Список исторических данных [[price, volume], ...]
+        :param news_features: Список sentiment-значений [[sentiment], ...]
+        :param initial_balance: Начальный баланс
+        :param user: Пользователь для сохранения в БД (опционально)
+        """
         super(TradingEnv, self).__init__()
-        
-        # Преобразование входных данных в numpy массивы для удобства
-        self.historical_data = np.array(historical_data)  # Ожидается: [[price, volume], ...]
-        self.news_features = np.array(news_features).reshape(-1, 1)  # Ожидается: [[sentiment], ...] или [sentiment, ...]
-        
-        # Проверки на корректность данных
+
+        self.historical_data = np.array(historical_data)
+        self.news_features = np.array(news_features).reshape(-1, 1)
+
         if len(self.historical_data) == 0 or len(self.news_features) == 0:
-            raise ValidationError("historical_data and news_features cannot be empty")
+            raise ValidationError(
+                "historical_data and news_features cannot be empty"
+            )
         if len(self.historical_data) != len(self.news_features):
-            raise ValidationError("historical_data and news_features must have the same length")
+            raise ValidationError(
+                "historical_data and news_features must have the same length"
+            )
         if self.historical_data.shape[1] < 2:
-            raise ValidationError("historical_data must have at least price and volume columns")
-        
+            raise ValidationError(
+                "historical_data must have at least price and volume columns"
+            )
+
         self.initial_balance = initial_balance
         self.balance = initial_balance
         self.current_step = 0
         self.max_steps = len(self.historical_data) - 1
-        self.position = 0  # 0: no position, 1: long, -1: short
-        self.user = user  # Для сохранения Prediction в БД (опционально)
-        
-        # Action space: 3 действия
-        self.action_space = spaces.Discrete(3)  # 0=hold, 1=buy, 2=sell
-        
-        # Observation space: фиксированный размер [price_norm, volume_norm, sentiment_norm, balance_norm]
-        self.observation_space = spaces.Box(low=0, high=1, shape=(4,), dtype=np.float32)
-        
-        # Вычисление min/max для нормализации (на основе всех данных)
+        self.position = 0
+        self.user = user
+
+        self.action_space = spaces.Discrete(3)
+
+        self.observation_space = spaces.Box(
+            low=0, high=1, shape=(4,), dtype=np.float32
+        )
+
         self.price_min = np.min(self.historical_data[:, 0])
         self.price_max = np.max(self.historical_data[:, 0])
         self.volume_min = np.min(self.historical_data[:, 1])
         self.volume_max = np.max(self.historical_data[:, 1])
         self.sentiment_min = np.min(self.news_features)
         self.sentiment_max = np.max(self.news_features)
-        
-        # Защита от деления на ноль
+
         if self.price_max == self.price_min:
             self.price_min -= 1e-6
             self.price_max += 1e-6
@@ -64,7 +91,11 @@ class TradingEnv(gym.Env):
             self.sentiment_max += 1e-6
 
     def reset(self):
-        """Сброс среды к начальному состоянию."""
+        """
+        Сброс среды к начальному состоянию.
+
+        :return: Начальное наблюдение
+        """
         self.balance = self.initial_balance
         self.current_step = 0
         self.position = 0
@@ -73,72 +104,96 @@ class TradingEnv(gym.Env):
     def step(self, action):
         """
         Выполнить шаг в среде.
-        - action: 0=hold, 1=buy, 2=sell
-        - Возвращает: obs, reward, done, info
+
+        :param action: Действие (0=hold, 1=buy, 2=sell)
+        :return: Кортеж (obs, reward, done, info)
         """
         if self.current_step >= self.max_steps:
             return self._get_obs(), 0, True, {}
-        
+
         current_price = self.historical_data[self.current_step, 0]
-        next_price = self.historical_data[self.current_step + 1, 0] if self.current_step + 1 <= self.max_steps else current_price
-        commission_rate = 0.001  # 0.1% комиссия
+        next_price = (
+            self.historical_data[self.current_step + 1, 0]
+            if self.current_step + 1 <= self.max_steps
+            else current_price
+        )
+        commission_rate = 0.001
         reward = 0
-        
-        # Логика действий
-        if action == 1 and self.position != 1:  # Buy (enter long)
+
+        if action == 1 and self.position != 1:
             cost = current_price * (1 + commission_rate)
             if self.balance >= cost:
                 self.balance -= cost
                 self.position = 1
-        elif action == 2 and self.position != -1:  # Sell (enter short)
+        elif action == 2 and self.position != -1:
             proceeds = current_price * (1 - commission_rate)
             self.balance += proceeds
             self.position = -1
-        # Hold: ничего не делаем
-        
-        # Вычисление reward на основе позиции и изменения цены
-        if self.position == 1:  # Long: profit если цена растёт
-            reward = (next_price - current_price) / current_price * 100  # Процентная прибыль
-        elif self.position == -1:  # Short: profit если цена падает
+
+        if self.position == 1:
+            reward = (next_price - current_price) / current_price * 100
+        elif self.position == -1:
             reward = (current_price - next_price) / current_price * 100
-        
-        # Опционально: сохранить Prediction в БД (если user задан)
+
         if self.user:
             try:
                 prediction = Prediction(
                     action=action,
                     predicted_price=next_price,
-                    user=self.user,  # Убрано: actual_price (поле не существует в модели)
-                    timestamp=self.historical_data[self.current_step + 1, 0] if self.current_step + 1 <= self.max_steps else None
+                    user=self.user,
+                    timestamp=(
+                        self.historical_data[self.current_step + 1, 0]
+                        if self.current_step + 1 <= self.max_steps
+                        else None
+                    )
                 )
                 prediction.save()
             except Exception as e:
-                # Логировать ошибку, но не прерывать симуляцию
                 print(f"Error saving Prediction: {e}")
-        
+
         self.current_step += 1
         done = self.current_step >= self.max_steps
         obs = self._get_obs()
         return obs, reward, done, {}
 
     def _get_obs(self):
-        """Получить нормализованное наблюдение."""
+        """
+        Получить нормализованное наблюдение.
+
+        :return: Массив нормализованных значений
+        """
         if self.current_step >= len(self.historical_data):
             return np.zeros(4, dtype=np.float32)
-        
+
         price = self.historical_data[self.current_step, 0]
         volume = self.historical_data[self.current_step, 1]
         sentiment = self.news_features[self.current_step, 0]
         balance_norm = self.balance / self.initial_balance
-        
-        # Нормализация в [0, 1]
-        price_norm = (price - self.price_min) / (self.price_max - self.price_min)
-        volume_norm = (volume - self.volume_min) / (self.volume_max - self.volume_min)
-        sentiment_norm = (sentiment - self.sentiment_min) / (self.sentiment_max - self.sentiment_min)
-        
-        return np.array([price_norm, volume_norm, sentiment_norm, balance_norm], dtype=np.float32)
+
+        price_norm = (
+            (price - self.price_min) / (self.price_max - self.price_min)
+        )
+        volume_norm = (
+            (volume - self.volume_min) / (self.volume_max - self.volume_min)
+        )
+        sentiment_norm = (
+            (sentiment - self.sentiment_min)
+            / (self.sentiment_max - self.sentiment_min)
+        )
+
+        return np.array(
+            [price_norm, volume_norm, sentiment_norm, balance_norm],
+            dtype=np.float32
+        )
 
     def render(self, mode='human'):
-        """Визуализация (опционально, для отладки)."""
-        print(f"Step: {self.current_step}, Balance: {self.balance:.2f}, Position: {self.position}, "
-              f"Price: {self.historical_data[self.current_step, 0]:.2f}")
+        """
+        Визуализация состояния среды (для отладки).
+
+        :param mode: Режим визуализации
+        """
+        print(
+            f"Step: {self.current_step}, Balance: {self.balance:.2f}, "
+            f"Position: {self.position}, "
+            f"Price: {self.historical_data[self.current_step, 0]:.2f}"
+        )

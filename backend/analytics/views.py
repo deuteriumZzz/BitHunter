@@ -5,7 +5,7 @@ from rest_framework.permissions import IsAuthenticated
 from django_filters.rest_framework import DjangoFilterBackend
 from django.core.cache import cache
 from .models import AnalyticsData, Prediction
-from .serializers import AnalyticsSerializer  # Убедитесь, что сериализатор существует
+from api.serializers import AnalyticsSerializer
 from .tasks import predict_price, analyze_news, train_model_task
 import ccxt
 import tensorflow as tf
