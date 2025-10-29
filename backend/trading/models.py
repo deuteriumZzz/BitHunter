@@ -108,3 +108,13 @@ class Trade(models.Model):
         historical_data = [[self.price, self.amount]]  # Упрощённо; расширьте для реальных данных
         news_data = self.strategy.get_news()  # ДОБАВЛЕНО: Интеграция новостей
         train_model_on_trade.delay(trade_result, historical_data, news_data)
+
+class TradeAudit(models.Model):
+    user = models.ForeignKey(User, on_delete=models.CASCADE)
+    trade = models.ForeignKey('Trade', on_delete=models.CASCADE)
+    action = models.CharField(max_length=50, choices=[('create', 'Create'), ('update', 'Update'), ('delete', 'Delete')])
+    timestamp = models.DateTimeField(auto_now_add=True)
+    details = models.JSONField(default=dict)  # Дополнительные детали, например, изменения
+
+    class Meta:
+        ordering = ['-timestamp']

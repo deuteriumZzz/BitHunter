@@ -4,6 +4,7 @@ from django.db.models.signals import post_save
 from django.dispatch import receiver
 from cryptography.fernet import Fernet
 from django.conf import settings
+import pyotp  # Добавлен импорт для 2FA
 
 class UserProfile(models.Model):
     user = models.OneToOneField(User, on_delete=models.CASCADE)
@@ -11,7 +12,8 @@ class UserProfile(models.Model):
     api_key_encrypted = models.TextField(blank=True)  # Шифрованный API-ключ для биржи (например, Binance)
     secret_key_encrypted = models.TextField(blank=True)  # Шифрованный секретный ключ для биржи
     telegram_chat_id = models.CharField(max_length=50, blank=True, null=True)  # Для алертов в Telegram
-    otp_secret = models.CharField(max_length=32, blank=True)  # Для 2FA (OTP)
+    otp_secret = models.CharField(max_length=32, blank=True, help_text="Secret for 2FA (OTP)")  # Для 2FA
+    is_2fa_enabled = models.BooleanField(default=False, help_text="Whether 2FA is enabled")  # Добавлено для 2FA
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -23,6 +25,8 @@ class UserProfile(models.Model):
         self.api_key_encrypted = cipher.encrypt(api_key.encode()).decode()
 
     def get_api_key(self):
+        if not self.api_key_encrypted:
+            return None
         cipher = Fernet(settings.SECRET_KEY.encode())
         return cipher.decrypt(self.api_key_encrypted.encode()).decode()
 
@@ -31,8 +35,23 @@ class UserProfile(models.Model):
         self.secret_key_encrypted = cipher.encrypt(secret_key.encode()).decode()
 
     def get_secret_key(self):
+        if not self.secret_key_encrypted:
+            return None
         cipher = Fernet(settings.SECRET_KEY.encode())
         return cipher.decrypt(self.secret_key_encrypted.encode()).decode()
+
+    # Методы для 2FA (интегрированы из добавленного кода)
+    def generate_otp_secret(self):
+        if not self.otp_secret:
+            self.otp_secret = pyotp.random_base32()
+            self.save()
+        return self.otp_secret
+
+    def verify_otp(self, token):
+        if not self.otp_secret:
+            return False
+        totp = pyotp.TOTP(self.otp_secret)
+        return totp.verify(token)
 
     class Meta:
         verbose_name = "User Profile"
