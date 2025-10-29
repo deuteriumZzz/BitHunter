@@ -1,5 +1,6 @@
 from celery import shared_task
 import ccxt
+import requests
 
 from alerts.models import AlertRule, Notification
 from django.conf import settings
@@ -38,8 +39,8 @@ def check_alerts():
                 alert_rule=rule,
                 message=message,
             )
-            # Отправка уведомления (здесь можно добавить email или Telegram)
-            print(f"Notification created: {notification}")
+            # Отправка уведомления в Telegram
+            send_message.delay(rule.user, message)
             cache.set(f'previous_price_{rule.symbol}', price, timeout=3600)
 
 
@@ -52,11 +53,37 @@ def send_notifications():
     """
     notifications = Notification.objects.filter(is_sent=False)
     for notification in notifications:
-        # Логика отправки (email, WebSocket и т.д.)
-        print(f"Sending notification: {notification.message}")
+        # Отправка уведомления в Telegram
+        send_message.delay(notification.user, notification.message)
         notification.is_sent = True
         notification.sent_at = timezone.now()
         notification.save()
+
+
+@shared_task
+def send_message(user, message):
+    """
+    Отправляет сообщение пользователю через Telegram Bot API.
+    
+    Args:
+        user: Экземпляр модели User (должен иметь поле telegram_chat_id).
+        message (str): Текст сообщения для отправки.
+    """
+    if not user.telegram_chat_id:
+        print(f"Warning: No telegram_chat_id for user {user.username}")
+        return
+    
+    url = f"https://api.telegram.org/bot{settings.TELEGRAM_BOT_TOKEN}/sendMessage"
+    payload = {
+        'chat_id': user.telegram_chat_id,
+        'text': message,
+    }
+    try:
+        response = requests.post(url, json=payload)
+        if response.status_code != 200:
+            print(f"Error sending Telegram message: {response.text}")
+    except Exception as e:
+        print(f"Exception sending Telegram message: {e}")
 
 
 def get_current_price(symbol):
