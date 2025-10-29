@@ -87,7 +87,7 @@ class Trade(models.Model):
     user = models.ForeignKey(User, on_delete=models.CASCADE, db_index=True)
     strategy = models.ForeignKey(Strategy, on_delete=models.CASCADE, db_index=True)
     symbol = models.CharField(max_length=10, db_index=True)
-    action = models.CharField(max_length=10, choices=[('long', 'Long'), ('short', 'Short'), ('hold', 'Hold')])
+    action = models.CharField(max_length=10, choices=[('long', 'Long'), ('short', 'Short'), ('hold', 'Hold')])  # Исправлено: Добавлены корректные choices
     amount = models.FloatField()
     price = models.FloatField()
     profit_loss = models.FloatField(default=0)

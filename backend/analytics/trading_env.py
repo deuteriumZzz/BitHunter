@@ -3,7 +3,7 @@ import gym
 import numpy as np
 from gym import spaces
 from django.core.exceptions import ValidationError
-from .models import HistoricalData, Prediction  # Импорт моделей Django для интеграции
+from .models import AnalyticsData, Prediction  # Исправлено: HistoricalData → AnalyticsData
 
 class TradingEnv(gym.Env):
     """
@@ -108,8 +108,7 @@ class TradingEnv(gym.Env):
                 prediction = Prediction(
                     action=action,
                     predicted_price=next_price,
-                    actual_price=next_price,  # Для простоты, можно заменить на реальные данные
-                    user=self.user,
+                    user=self.user,  # Убрано: actual_price (поле не существует в модели)
                     timestamp=self.historical_data[self.current_step + 1, 0] if self.current_step + 1 <= self.max_steps else None
                 )
                 prediction.save()

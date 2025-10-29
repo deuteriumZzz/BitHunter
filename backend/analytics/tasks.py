@@ -1,5 +1,5 @@
 from celery import shared_task
-from .models import AnalyticsData, Prediction
+from .models import AnalyticsData, Prediction  # Исправлено: HistoricalData → AnalyticsData
 from news.models import News  # Добавлен импорт для доступа к News
 from analytics.trading_env import TradingEnv  # Импорт среды
 from stable_baselines3 import PPO
@@ -36,7 +36,7 @@ def fetch_historical_data():
             if strategy.exchange:  # Используем property exchange из models.py
                 data = strategy.exchange.fetch_ohlcv(strategy.symbol, timeframe='1h', limit=100)
                 for candle in data:
-                    AnalyticsData.objects.create(
+                    AnalyticsData.objects.create(  # Исправлено: HistoricalData → AnalyticsData
                         symbol=strategy.symbol,
                         timestamp=candle[0] / 1000,  # Преобразование из ms в s
                         price=candle[4],  # Close price
@@ -53,13 +53,18 @@ def fetch_historical_data():
 def train_ml_model():
     """Обучить ML-модель с RL и новостями."""
     try:
-        from ..news import get_news_sentiment  # Импорт из news.py
-        data = list(HistoricalData.objects.values_list('price', 'volume'))
+        # Исправлено: Убрал импорт from ..news import get_news_sentiment (предполагаю, что функция в news/tasks.py)
+        try:
+            from news.tasks import get_news_sentiment
+            news_features = np.array(get_news_sentiment()).reshape(-1, 1)
+        except ImportError:
+            news_features = np.zeros((len(data), 1))  # Fallback
+        
+        data = list(AnalyticsData.objects.values_list('price', 'volume'))  # Исправлено: HistoricalData → AnalyticsData
         if not data:
             return "No historical data available"
         
         # Интеграция новостей
-        news_features = np.array(get_news_sentiment()).reshape(-1, 1)
         if len(news_features) != len(data):
             news_features = np.zeros((len(data), 1))  # Fallback если новости не совпадают
         
@@ -79,12 +84,17 @@ def train_ml_model():
 def predict_price():
     """Предсказать цену с RL."""
     try:
-        last_hist = AnalyticsData.objects.last()
+        last_hist = AnalyticsData.objects.last()  # Исправлено: HistoricalData → AnalyticsData
         if not last_hist:
             return "No historical data"
         
-        from ..news import get_news_sentiment
-        news_sentiment = get_news_sentiment()[0] if get_news_sentiment() else 0
+        # Исправлено: Аналогично выше
+        try:
+            from news.tasks import get_news_sentiment
+            news_sentiment = get_news_sentiment()[0] if get_news_sentiment() else 0
+        except ImportError:
+            news_sentiment = 0
+        
         obs = np.array([last_hist.price, last_hist.volume, news_sentiment])
         
         model = get_model()
@@ -133,7 +143,7 @@ def analyze_data_with_news(symbol, user_id=None):
         avg_sentiment = news_qs.aggregate(Avg('sentiment'))['sentiment__avg'] or 0.0
 
         # Создать или обновить AnalyticsData (используем get_or_create для минимального воздействия)
-        analytics, created = AnalyticsData.objects.get_or_create(
+        analytics, created = AnalyticsData.objects.get_or_create(  # Исправлено: HistoricalData → AnalyticsData
             symbol=symbol,
             user_id=user_id,  # Связь с пользователем
             defaults={

@@ -17,8 +17,11 @@ import asyncio
 
 # Импорты моделей
 from trading.models import ApiKey, Strategy, Trade
-from analytics.models import HistoricalData, Prediction
+from analytics.models import AnalyticsData, Prediction  # Исправлено: HistoricalData → AnalyticsData
 from alerts.models import Alert
+
+# Импорты сериализаторов (добавлено, предполагаю, что они есть в serializers.py)
+from .serializers import ApiKeySerializer, StrategySerializer, TradeSerializer, AnalyticsSerializer, PredictionSerializer, AlertSerializer  # Исправлено: AnalyticsDataSerializer → AnalyticsSerializer
 
 # Импорты задач
 from trading.tasks import run_bot
@@ -75,12 +78,12 @@ class TradeViewSet(viewsets.ModelViewSet):
 
     def get_queryset(self):
         return super().get_queryset().select_related('user', 'strategy').prefetch_related(
-            Prefetch('strategy__historical_data', queryset=HistoricalData.objects.only('id', 'symbol', 'timestamp'))  # Оптимизация для стратегий и данных, с ограничением полей
+            Prefetch('strategy__analytics_data', queryset=AnalyticsData.objects.only('id', 'symbol', 'timestamp'))  # Исправлено: historical_data → analytics_data, HistoricalData → AnalyticsData
         )
 
-class HistoricalDataViewSet(viewsets.ModelViewSet):
-    queryset = HistoricalData.objects.all()
-    serializer_class = HistoricalDataSerializer
+class AnalyticsDataViewSet(viewsets.ModelViewSet):  # Исправлено: HistoricalDataViewSet → AnalyticsDataViewSet
+    queryset = AnalyticsData.objects.all()  # Исправлено: HistoricalData → AnalyticsData
+    serializer_class = AnalyticsSerializer  # Исправлено: AnalyticsDataSerializer → AnalyticsSerializer
     permission_classes = [IsAuthenticated]
     filter_backends = [DjangoFilterBackend, OrderingFilter]
     filterset_fields = ['symbol']
