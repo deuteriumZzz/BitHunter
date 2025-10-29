@@ -84,3 +84,70 @@ def run_bot(strategy_id):
     action = predict_price.delay().get()
     place_trade.delay(action, strategy_id)
     return "Bot run with RL prediction"
+
+@shared_task
+def calculate_metrics(strategy_id):
+    """
+    Рассчитывает метрики для указанной стратегии на основе её торгов.
+
+    Получает все сделки (`Trade`) для стратегии, вычисляет ключевые метрики:
+    - total_trades: Общее количество сделок.
+    - win_rate: Процент выигрышных сделок (предполагаем, что profit > 0 — выигрыш).
+    - total_profit: Общая прибыль/убыток.
+    - avg_profit: Средняя прибыль на сделку.
+    
+    В демо-режиме использует симулированные прибыли (на основе цены). 
+    В реальном режиме — предполагает, что в модели Trade есть поле 'profit' 
+    (если нет, добавьте его в модель или доработайте расчёт).
+    
+    Если стратегия не найдена, возвращает ошибку.
+
+    Параметры:
+    - strategy_id (int): ID стратегии.
+
+    Возвращает:
+    - dict: Словарь с метриками или {'error': str} в случае ошибки.
+    """
+    try:
+        strategy = Strategy.objects.get(id=strategy_id)
+        trades = Trade.objects.filter(strategy=strategy)
+        
+        if not trades.exists():
+            return {'error': 'No trades found for this strategy.'}
+        
+        total_trades = trades.count()
+        profits = []
+        
+        for trade in trades:
+            if settings.DEMO_MODE:
+                # Симуляция прибыли: для long +1% от цены, для short -1% (упрощённо; доработайте по логике)
+                if trade.action == 'long':
+                    profit = trade.price * trade.amount * 0.01  # +1% прибыль
+                elif trade.action == 'short':
+                    profit = -trade.price * trade.amount * 0.01  # -1% убыток (или инвертируйте)
+                else:
+                    profit = 0
+                # Если в модели нет поля profit, сохраните его здесь: trade.profit = profit; trade.save()
+            else:
+                # В реальном режиме: используйте реальный profit из ордера или модели
+                profit = getattr(trade, 'profit', 0)  # Предполагаем поле 'profit' в модели Trade
+            
+            profits.append(profit)
+        
+        wins = sum(1 for p in profits if p > 0)
+        total_profit = sum(profits)
+        avg_profit = total_profit / total_trades if total_trades > 0 else 0
+        win_rate = (wins / total_trades * 100) if total_trades > 0 else 0
+        
+        return {
+            'total_trades': total_trades,
+            'win_rate': round(win_rate, 2),
+            'total_profit': round(total_profit, 2),
+            'avg_profit': round(avg_profit, 2),
+            'strategy_name': strategy.name  # Дополнительно, для удобства
+        }
+    
+    except Strategy.DoesNotExist:
+        return {'error': f'Strategy with ID {strategy_id} not found.'}
+    except Exception as e:
+        return {'error': f'Error calculating metrics: {str(e)}'}
