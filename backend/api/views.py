@@ -4,6 +4,7 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from django_filters.rest_framework import DjangoFilterBackend
 from rest_framework.filters import OrderingFilter
+from rest_framework.pagination import PageNumberPagination
 
 # Новые импорты для оптимизации и кэширования
 from django.utils.decorators import method_decorator
@@ -27,6 +28,14 @@ from .serializers import ApiKeySerializer, StrategySerializer, TradeSerializer, 
 from trading.tasks import run_bot
 from analytics.tasks import train_ml_model
 from alerts.tasks import check_alerts
+
+
+class StandardPagination(PageNumberPagination):
+    page_size = 20
+    page_size_query_param = 'page_size'
+    max_page_size = 100
+    
+
 
 class ApiKeyViewSet(viewsets.ModelViewSet):
     queryset = ApiKey.objects.all()
@@ -83,7 +92,8 @@ class TradeViewSet(viewsets.ModelViewSet):
 
 class AnalyticsDataViewSet(viewsets.ModelViewSet):  # Исправлено: HistoricalDataViewSet → AnalyticsDataViewSet
     queryset = AnalyticsData.objects.all()  # Исправлено: HistoricalData → AnalyticsData
-    serializer_class = AnalyticsSerializer  # Исправлено: AnalyticsDataSerializer → AnalyticsSerializer
+    serializer_class = AnalyticsSerializer
+    pagination_class = StandardPagination
     permission_classes = [IsAuthenticated]
     filter_backends = [DjangoFilterBackend, OrderingFilter]
     filterset_fields = ['symbol']

@@ -11,6 +11,8 @@ import ccxt
 import tensorflow as tf
 import numpy as np
 import logging
+from django_prometheus.models import model_to_counter
+from .models import Trade
 
 logger = logging.getLogger(__name__)
 
@@ -103,3 +105,10 @@ class AnalyticsViewSet(viewsets.ModelViewSet):
         except Exception as e:
             logger.error(f"Error in train_model: {e}")
             return Response({'error': 'Training failed'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+def calculate_profit(request):
+    trades = Trade.objects.filter(user=request.user)
+    profit = sum((t.sell_price - t.buy_price) * t.amount for t in trades if t.sell_price)
+    model_to_counter(Trade, 'trades_count').inc()
+    return Response({'profit': profit})

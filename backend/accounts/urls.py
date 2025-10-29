@@ -1,7 +1,15 @@
+"""
+Модуль URL-шаблонов для приложения.
+
+Определяет маршрутизацию API с использованием DefaultRouter от Django REST Framework,
+включая маршруты для UserViewSet и UserProfileViewSet, а также дополнительный путь для отключения 2FA.
+"""
+
 from django.urls import path, include
 from rest_framework.routers import DefaultRouter
-from .views import UserViewSet, UserProfileViewSet
-from .views import disable_2fa
+
+from .views import UserViewSet, UserProfileViewSet, disable_2fa
+
 
 router = DefaultRouter()
 router.register(r'users', UserViewSet)

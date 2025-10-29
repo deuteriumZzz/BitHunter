@@ -46,3 +46,31 @@ class Prediction(models.Model):
 
     def __str__(self):
         return f"{self.user.username} - {self.get_action_display()} at {self.predicted_price}"
+
+# Новая модель Trade (добавлена для функции calculate_profit)
+class Trade(models.Model):
+    user = models.ForeignKey(User, on_delete=models.CASCADE, verbose_name="Пользователь")
+    symbol = models.CharField(max_length=10, verbose_name="Символ актива")  # Для связи с активом (например, BTC, ETH)
+    buy_price = models.FloatField(verbose_name="Цена покупки")
+    sell_price = models.FloatField(null=True, blank=True, verbose_name="Цена продажи")  # Nullable, если сделка незавершена
+    amount = models.FloatField(verbose_name="Количество актива")  # Количество для расчёта профита
+    buy_date = models.DateTimeField(auto_now_add=True, verbose_name="Дата покупки")
+    sell_date = models.DateTimeField(null=True, blank=True, verbose_name="Дата продажи")  # Nullable
+
+    class Meta:
+        indexes = [
+            models.Index(fields=['user', 'symbol']),  # Для оптимизации фильтрации по пользователю и символу
+            models.Index(fields=['buy_date']),  # Для сортировки по времени
+        ]
+        verbose_name = "Сделка"
+        verbose_name_plural = "Сделки"
+
+    def __str__(self):
+        status = "Открыта" if not self.sell_price else "Закрыта"
+        return f"{self.user.username} - {self.symbol}: {status} ({self.amount} @ {self.buy_price})"
+
+    # Метод для расчёта профита по сделке (опционально, для удобства)
+    def calculate_trade_profit(self):
+        if self.sell_price:
+            return (self.sell_price - self.buy_price) * self.amount
+        return 0.0  # Если сделка не закрыта, профит 0

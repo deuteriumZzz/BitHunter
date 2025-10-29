@@ -10,6 +10,7 @@ from django.db.models import Avg
 from datetime import timedelta
 import os
 import logging
+import ccxt
 
 logger = logging.getLogger(__name__)
 
@@ -165,3 +166,10 @@ def analyze_data_with_news(symbol, user_id=None):
     except Exception as e:
         logger.error(f"Error in analyze_data_with_news: {e}")
         return f"Error: {e}"
+
+@shared_task
+def bulk_load_historical_data(symbol, timeframe='1h', limit=1000):
+    exchange = ccxt.binance()
+    data = exchange.fetch_ohlcv(symbol, timeframe=timeframe, limit=limit)
+    objects = [AnalyticsData(symbol=symbol, timestamp=d[0], open=d[1], high=d[2], low=d[3], close=d[4], volume=d[5]) for d in data]
+    AnalyticsData.objects.bulk_create(objects, ignore_conflicts=True)

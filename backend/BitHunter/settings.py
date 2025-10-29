@@ -9,6 +9,23 @@ DEBUG = os.environ.get('DEBUG', 'True') == 'True'
 
 ALLOWED_HOSTS = os.environ.get('ALLOWED_HOSTS', 'localhost,127.0.0.1').split(',')
 
+
+AWS_ACCESS_KEY_ID = os.getenv('AWS_ACCESS_KEY_ID')
+AWS_SECRET_ACCESS_KEY = os.getenv('AWS_SECRET_ACCESS_KEY')
+AWS_S3_BUCKET_NAME = 'bithunter-models'
+
+
+import sentry_sdk
+from sentry_sdk.integrations.django import DjangoIntegration
+
+sentry_sdk.init(dsn=os.getenv('SENTRY_DSN'), integrations=[DjangoIntegration()])
+
+# Prometheus
+INSTALLED_APPS.append('django_prometheus')
+MIDDLEWARE.insert(0, 'django_prometheus.middleware.PrometheusBeforeMiddleware')
+MIDDLEWARE.append('django_prometheus.middleware.PrometheusAfterMiddleware')
+
+
 INSTALLED_APPS = [
     'django.contrib.admin',
     'django.contrib.auth',
