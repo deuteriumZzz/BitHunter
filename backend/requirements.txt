@@ -11,6 +11,7 @@ psycopg2-binary==2.9.7  # Драйвер для PostgreSQL
 # Authentication and Security
 django-otp==1.6.3  # Двухфакторная аутентификация
 pyotp==2.9.0  # Генерация OTP-кодов (добавил версию)
+cryptography==42.0.5
 django-cryptography==1.0  # Шифрование данных
 django-ratelimit==4.1.0  # Ограничение запросов
 
