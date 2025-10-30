@@ -9,7 +9,7 @@ drf-spectacular==0.26.5  # Документация API (Swagger/OpenAPI)
 psycopg2-binary==2.9.7  # Драйвер для PostgreSQL
 
 # Authentication and Security
-django-otp==2.0.0  # Двухфакторная аутентификация
+django-otp==1.6.3  # Двухфакторная аутентификация
 pyotp==2.9.0  # Генерация OTP-кодов (добавил версию)
 django-cryptography==1.0  # Шифрование данных
 django-ratelimit==4.1.0  # Ограничение запросов
@@ -25,11 +25,10 @@ redis==5.0.1  # Redis как брокер и кэш
 # Monitoring and Logging
 django-prometheus==2.3.1  # Метрики для Prometheus
 sentry-sdk==1.40.0  # Отправка ошибок в Sentry
-django-logging==0.9.3  # Расширенное логирование
 
 # ML and Crypto Trading
 tensorflow==2.15.0  # Машинное обучение
-ccxt==4.2.0  # Библиотека для крипто-бирж (торговля)
+ccxt==4.5.14  # Библиотека для крипто-бирж (торговля)
 
 # AWS and Storage
 boto3==1.34.0  # AWS SDK (для S3 и т.д.)
