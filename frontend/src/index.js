@@ -1,23 +1,22 @@
 import React from 'react';
 import ReactDOM from 'react-dom/client';
-import { ThemeProvider, createTheme } from '@mui/material/styles';
-import CssBaseline from '@mui/material/CssBaseline';
+import './index.css';
+import './i18n';
 import App from './App';
 import { AuthProvider } from './contexts/AuthContext';
-
-const theme = createTheme({
-    palette: {
-        primary: { main: '#1976d2' },
-        secondary: { main: '#dc004e' },
-    },
-});
+import { ThemeProvider } from './contexts/ThemeContext';
+import { NotificationProvider } from './contexts/NotificationContext';
+import { ToastContainer } from 'react-toastify';
+import 'react-toastify/dist/ReactToastify.css';
 
 const root = ReactDOM.createRoot(document.getElementById('root'));
 root.render(
-    <ThemeProvider theme={theme}>
-        <CssBaseline />
-        <AuthProvider>
-            <App />
-        </AuthProvider>
+  <AuthProvider>
+    <ThemeProvider>
+      <NotificationProvider>
+        <App />
+        <ToastContainer position="top-right" autoClose={3000} />
+      </NotificationProvider>
     </ThemeProvider>
+  </AuthProvider>
 );

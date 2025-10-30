@@ -1,41 +1,47 @@
 import React, { createContext, useState, useEffect } from 'react';
-import axios from 'axios';
+import jwtDecode from 'jwt-decode';
+import { api } from '../services/api';
 
 export const AuthContext = createContext();
 
 export const AuthProvider = ({ children }) => {
-    const [user, setUser] = useState(null);
-    const [token, setToken] = useState(localStorage.getItem('token'));
+  const [user, setUser] = useState(null);
+  const [loading, setLoading] = useState(true);
 
-    useEffect(() => {
-        if (token) {
-            axios.defaults.headers.common['Authorization'] = `Bearer ${token}`;
-            // Загрузить профиль пользователя
-            axios.get('/api/accounts/profile/').then(res => setUser(res.data)).catch(() => setToken(null));
-        }
-    }, [token]);
-
-    const login = async (credentials) => {
-        const res = await axios.post('/api/accounts/login/', credentials);
-        setToken(res.data.access);
-        localStorage.setItem('token', res.data.access);
-        setUser(res.data.user);
-    };
-
-    const register = async (data) => {
-        await axios.post('/api/accounts/register/', data);
-    };
-
-    const logout = () => {
-        setToken(null);
-        setUser(null);
+  useEffect(() => {
+    const token = localStorage.getItem('token');
+    if (token) {
+      try {
+        const decoded = jwtDecode(token);
+        setUser(decoded);
+      } catch (error) {
         localStorage.removeItem('token');
-        delete axios.defaults.headers.common['Authorization'];
-    };
+      }
+    }
+    setLoading(false);
+  }, []);
 
-    return (
-        <AuthContext.Provider value={{ user, token, login, register, logout }}>
-            {children}
-        </AuthContext.Provider>
-    );
+  const login = async (username, password) => {
+    try {
+      const response = await api.post('/api/login/', { username, password });
+      const { access } = response.data;
+      localStorage.setItem('token', access);
+      const decoded = jwtDecode(access);
+      setUser(decoded);
+      return true;
+    } catch (error) {
+      throw new Error('Неверные данные');
+    }
+  };
+
+  const logout = () => {
+    localStorage.removeItem('token');
+    setUser(null);
+  };
+
+  return (
+    <AuthContext.Provider value={{ user, loading, login, logout }}>
+      {children}
+    </AuthContext.Provider>
+  );
 };
