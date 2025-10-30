@@ -1,9 +1,10 @@
 import pyotp
-
-from cryptography.fernet import Fernet
+from cryptography.fernet import Fernet, InvalidToken
 
 from django.conf import settings
 from django.contrib.auth.models import User
+from django.core.cache import cache  # Импорт перенесен наверх для эффективности
+from django.core.exceptions import ValidationError
 from django.db import models
 from django.db.models.signals import post_save
 from django.dispatch import receiver
@@ -29,7 +30,8 @@ class UserProfile(models.Model):
     telegram_chat_id = models.CharField(
         max_length=50,
         blank=True,
-        null=True
+        null=True,
+        help_text="Telegram Chat ID must be numeric."
     )
     otp_secret = models.CharField(
         max_length=32,
@@ -49,29 +51,39 @@ class UserProfile(models.Model):
         """
         return f"{self.user.username}'s profile"
 
+    def clean(self):
+        """
+        Валидация полей модели.
+        """
+        super().clean()
+        if self.telegram_chat_id and not self.telegram_chat_id.isdigit():
+            raise ValidationError("Telegram Chat ID must be numeric.")
+
     def set_api_key(self, api_key):
         """
         Шифрует и сохраняет API-ключ для биржи.
 
         :param api_key: Нешифрованный API-ключ в виде строки.
         """
-        cipher = Fernet(settings.SECRET_KEY.encode())
-        self.api_key_encrypted = cipher.encrypt(
-            api_key.encode()
-        ).decode()
+        try:
+            cipher = Fernet(settings.FERNET_KEY.encode())
+            self.api_key_encrypted = cipher.encrypt(api_key.encode()).decode()
+        except Exception as e:
+            raise ValidationError(f"Error encrypting API key: {str(e)}")
 
     def get_api_key(self):
         """
         Дешифрует и возвращает API-ключ для биржи.
 
-        :return: Дешифрованный API-ключ или None, если ключ не установлен.
+        :return: Дешифрованный API-ключ или None, если ключ не установлен или ошибка.
         """
         if not self.api_key_encrypted:
             return None
-        cipher = Fernet(settings.SECRET_KEY.encode())
-        return cipher.decrypt(
-            self.api_key_encrypted.encode()
-        ).decode()
+        try:
+            cipher = Fernet(settings.FERNET_KEY.encode())
+            return cipher.decrypt(self.api_key_encrypted.encode()).decode()
+        except (InvalidToken, ValueError, Exception):
+            return None  # Логируйте ошибку в продакшене, если нужно
 
     def set_secret_key(self, secret_key):
         """
@@ -79,23 +91,25 @@ class UserProfile(models.Model):
 
         :param secret_key: Нешифрованный секретный ключ в виде строки.
         """
-        cipher = Fernet(settings.SECRET_KEY.encode())
-        self.secret_key_encrypted = cipher.encrypt(
-            secret_key.encode()
-        ).decode()
+        try:
+            cipher = Fernet(settings.FERNET_KEY.encode())
+            self.secret_key_encrypted = cipher.encrypt(secret_key.encode()).decode()
+        except Exception as e:
+            raise ValidationError(f"Error encrypting secret key: {str(e)}")
 
     def get_secret_key(self):
         """
         Дешифрует и возвращает секретный ключ для биржи.
 
-        :return: Дешифрованный секретный ключ или None, если ключ не установлен.
+        :return: Дешифрованный секретный ключ или None, если ключ не установлен или ошибка.
         """
         if not self.secret_key_encrypted:
             return None
-        cipher = Fernet(settings.SECRET_KEY.encode())
-        return cipher.decrypt(
-            self.secret_key_encrypted.encode()
-        ).decode()
+        try:
+            cipher = Fernet(settings.FERNET_KEY.encode())
+            return cipher.decrypt(self.secret_key_encrypted.encode()).decode()
+        except (InvalidToken, ValueError, Exception):
+            return None  # Логируйте ошибку в продакшене, если нужно
 
     def generate_otp_secret(self):
         """
@@ -120,12 +134,19 @@ class UserProfile(models.Model):
         totp = pyotp.TOTP(self.otp_secret)
         return totp.verify(token)
 
+    def save(self, *args, **kwargs):
+        self.full_clean()  # Автоматическая валидация перед сохранением
+        super().save(*args, **kwargs)
+        # Инвалидация кэша
+        cache.delete(f'profile_{self.user.id}')
+
     class Meta:
         verbose_name = "Профиль пользователя"
         verbose_name_plural = "Профили пользователей"
         indexes = [
             models.Index(fields=['user']),
         ]
+        ordering = ['-created_at']  # Новые профили сверху для удобства
 
 
 @receiver(post_save, sender=User)
@@ -144,4 +165,6 @@ def save_user_profile(sender, instance, **kwargs):
     Сигнал для автоматического сохранения профиля пользователя
     при обновлении пользователя.
     """
-    instance.userprofile.save()
+    # Безопасная проверка: если профиль существует, сохраняем
+    if hasattr(instance, 'userprofile'):
+        instance.userprofile.save()

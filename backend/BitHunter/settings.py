@@ -1,11 +1,17 @@
 import os
 from pathlib import Path
+from cryptography.fernet import Fernet
 
 # Base settings
 BASE_DIR = Path(__file__).resolve().parent.parent
 
 # SECRET_KEY: Используем env с fallback (хорошо, но не забудь сменить в проде!)
 SECRET_KEY = os.environ.get('DJANGO_SECRET_KEY', 'fallback-secret-key-change-in-prod')
+
+FERNET_KEY = os.getenv('FERNET_KEY')
+if not FERNET_KEY:
+    FERNET_KEY = Fernet.generate_key().decode()
+    # Рекомендация: сохранить в .env файл вручную после генерации
 
 # DEBUG: По умолчанию False для безопасности, включай явно в dev
 DEBUG = os.environ.get('DEBUG', 'False').lower() == 'true'
@@ -125,10 +131,12 @@ REST_FRAMEWORK = {
         'django_filters.rest_framework.DjangoFilterBackend',
     ],
     'DEFAULT_THROTTLE_CLASSES': [
-        'rest_framework.throttling.UserRateThrottle',
+        'rest_framework.throttling.AnonRateThrottle',
+        'rest_framework.throttling.UserRateThrottle'
     ],
     'DEFAULT_THROTTLE_RATES': {
-        'user': '100/hour',  # Ограничение для API новостей
+        'anon': '100/hour',
+        'user': '100/hour'  # Ограничение для API новостей
     },
 }
 
@@ -178,6 +186,11 @@ LOGGING = {
             'filename': os.path.join(BASE_DIR, 'logs', 'django.log'),  # Добавь папку logs в проект
             'formatter': 'verbose',
         },
+        'celery': {
+            'level': 'INFO',
+            'class': 'logging.FileHandler',
+            'filename': 'logs/celery.log',
+        },
     },
     'root': {
         'handlers': ['console', 'file'],
@@ -189,6 +202,10 @@ LOGGING = {
             'level': 'INFO',
             'propagate': False,
         },
+        'celery': {
+            'handlers': ['celery'],
+            'level': 'INFO',
+        },
     },
 }
 
@@ -197,3 +214,5 @@ if not DEBUG:
     SECURE_SSL_REDIRECT = True  # Перенаправление на HTTPS
     SESSION_COOKIE_SECURE = True
     CSRF_COOKIE_SECURE = True
+
+DEMO_MODE = os.getenv('DEMO_MODE', 'True').lower() == 'true'
