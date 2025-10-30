@@ -3,7 +3,7 @@ from cryptography.fernet import Fernet, InvalidToken
 
 from django.conf import settings
 from django.contrib.auth.models import User
-from django.core.cache import cache  # Импорт перенесен наверх для эффективности
+from django.core.cache import cache
 from django.core.exceptions import ValidationError
 from django.db import models
 from django.db.models.signals import post_save
@@ -75,7 +75,8 @@ class UserProfile(models.Model):
         """
         Дешифрует и возвращает API-ключ для биржи.
 
-        :return: Дешифрованный API-ключ или None, если ключ не установлен или ошибка.
+        :return: Дешифрованный API-ключ или None, если ключ не установлен
+        или ошибка.
         """
         if not self.api_key_encrypted:
             return None
@@ -93,7 +94,8 @@ class UserProfile(models.Model):
         """
         try:
             cipher = Fernet(settings.FERNET_KEY.encode())
-            self.secret_key_encrypted = cipher.encrypt(secret_key.encode()).decode()
+            self.secret_key_encrypted = cipher.encrypt(
+                secret_key.encode()).decode()
         except Exception as e:
             raise ValidationError(f"Error encrypting secret key: {str(e)}")
 
@@ -101,7 +103,8 @@ class UserProfile(models.Model):
         """
         Дешифрует и возвращает секретный ключ для биржи.
 
-        :return: Дешифрованный секретный ключ или None, если ключ не установлен или ошибка.
+        :return: Дешифрованный секретный ключ или None, если ключ
+        не установлен или ошибка.
         """
         if not self.secret_key_encrypted:
             return None

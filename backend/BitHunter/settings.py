@@ -2,6 +2,8 @@ import os
 from pathlib import Path
 from cryptography.fernet import Fernet
 
+from core.middleware import SecurityMiddleware
+
 # Base settings
 BASE_DIR = Path(__file__).resolve().parent.parent
 
@@ -56,14 +58,16 @@ if 'django_prometheus' not in INSTALLED_APPS:  # Проверка, чтобы н
 
 # MIDDLEWARE: Определяем список сначала
 MIDDLEWARE = [
-    'django.middleware.security.SecurityMiddleware',
+    'django.middleware.security.SecurityMiddleware',  # Стандартный Django middleware
     'django.contrib.sessions.middleware.SessionMiddleware',
+    'corsheaders.middleware.CorsMiddleware',  # Если используешь CORS
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
     'django.contrib.auth.middleware.AuthenticationMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
-    'core.middleware.SecurityMiddleware',
+    'core.middleware.SecurityMiddleware',  # Теперь ссылка на импортированный класс (без дублирования!)
+    # Добавь другие, если нужно, например, для JWT или кастомных
 ]
 
 # Prometheus middleware: Добавляем ПОСЛЕ определения MIDDLEWARE

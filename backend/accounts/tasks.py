@@ -1,6 +1,7 @@
 from celery import shared_task
 from django.core.cache import cache
 from django.contrib.auth.models import User
+from django.conf import settings
 from .models import UserProfile
 import requests
 import logging
@@ -12,7 +13,7 @@ def update_user_balance(user_id, amount):
     """
     Асинхронная задача для обновления баланса пользователя.
     Используй, например, после успешной сделки на бирже.
-    
+
     :param user_id: ID пользователя
     :param amount: Сумма для добавления (может быть отрицательной)
     """
@@ -34,7 +35,7 @@ def send_telegram_notification(user_id, message):
     """
     Асинхронная задача для отправки уведомления в Telegram.
     Требует настроенного бота и токена в settings.py (например, TELEGRAM_BOT_TOKEN).
-    
+
     :param user_id: ID пользователя
     :param message: Текст сообщения
     """
@@ -53,9 +54,13 @@ def send_telegram_notification(user_id, message):
             }
             response = requests.post(url, data=data)
             if response.status_code == 200:
-                logger.info(f"Sent Telegram notification to user {user.username}")
+                logger.info(
+                    f"Sent Telegram notification to user {user.username}"
+                )
             else:
-                logger.error(f"Failed to send Telegram message: {response.text}")
+                logger.error(
+                    f"Failed to send Telegram message: {response.text}"
+                )
         else:
             logger.info(f"No Telegram Chat ID for user {user.username}")
     except User.DoesNotExist:
@@ -63,12 +68,13 @@ def send_telegram_notification(user_id, message):
     except Exception as e:
         logger.error(f"Error sending Telegram notification: {str(e)}")
 
+
 @shared_task
 def invalidate_profile_cache(user_id):
     """
     Асинхронная задача для инвалидации кэша профиля.
     Полезно после массовых обновлений.
-    
+
     :param user_id: ID пользователя
     """
     cache_key = f'profile_{user_id}'

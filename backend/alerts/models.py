@@ -10,7 +10,7 @@ class AlertRule(models.Model):
     
     Определяет условия для отправки оповещений пользователю на основе цены криптовалюты.
     """
-    
+
     user = models.ForeignKey(User, on_delete=models.CASCADE)
     symbol = models.CharField(max_length=10, help_text="Криптовалютная пара, например, BTC/USDT")
     condition = models.CharField(max_length=20, choices=[
