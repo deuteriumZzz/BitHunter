@@ -130,24 +130,24 @@ class Strategy(models.Model):
         """
         Возвращает последние новости по символу стратегии.
 
-        Пытается загрузить из локальной модели News; в fallback использует внешний API.
+        Пытается загрузить из локальной модели News; если нет данных, запускает асинхронную задачу
+        для загрузки и возвращает пустой список (чтобы не блокировать).
         """
-        # Предполагаем модель News из news.py (если нет, замените на API-вызов, e.g., requests.get)
         try:
             from news.models import News  # Импорт из вашего news.py
-            return News.objects.filter(symbol=self.symbol).order_by('-timestamp')[:limit]
+            news = News.objects.filter(symbol=self.symbol).order_by('-timestamp')[:limit]
+            if news.exists():
+                return news
+            else:
+                # Если новостей нет, запускаем асинхронную задачу для загрузки
+                from news.tasks import get_news_sentiment  # Используем вашу реальную задачу
+                get_news_sentiment.delay(self.symbol, user_id=self.user.id)  # Передаём user_id
+                return []  # Возвращаем пустой список, пока задача не выполнится
         except ImportError:
-            # Fallback: вызов внешнего API (e.g., NewsAPI)
-            import requests
-            api_key = os.environ.get('NEWS_API_KEY')
-            response = requests.get(
-                f'https://newsapi.org/v2/everything?q={self.symbol}&apiKey={api_key}'
-            )
-            return (
-                response.json().get('articles', [])[:limit]
-                if response.status_code == 200
-                else []
-            )
+            # Если модель News недоступна, запускаем задачу и возвращаем []
+            from news.tasks import get_news_sentiment
+            get_news_sentiment.delay(self.symbol, user_id=self.user.id)
+            return []
 
 
 class Trade(models.Model):
@@ -210,3 +210,4 @@ class TradeAudit(models.Model):
 
     class Meta:
         ordering = ['-timestamp']
+
