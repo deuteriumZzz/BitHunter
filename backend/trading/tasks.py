@@ -5,13 +5,11 @@
 а также для запуска стратегий с предсказаниями RL-модели. Включает интеграцию с обучением модели.
 """
 
-import ccxt
-
+from analytics.tasks import predict_price, train_model_on_trade
 from celery import shared_task
 from django.conf import settings
 
 from .models import Strategy, Trade
-from analytics.tasks import predict_price, train_model_on_trade
 
 
 @shared_task
@@ -36,32 +34,28 @@ def place_trade(action, strategy_id):
         price = 50000  # Фиктивная цена
         trade = Trade.objects.create(
             strategy=strategy,
-            action='long' if action == 1 else 'short',
+            action="long" if action == 1 else "short",
             amount=0.01,
-            price=price
+            price=price,
         )
     else:
         if action == 1:
-            order = strategy.exchange.create_market_buy_order('BTC/USDT', 0.01)
+            order = strategy.exchange.create_market_buy_order("BTC/USDT", 0.01)
             trade = Trade.objects.create(
-                strategy=strategy,
-                action='long',
-                amount=0.01,
-                price=order['price']
+                strategy=strategy, action="long", amount=0.01, price=order["price"]
             )
         elif action == 2:
-            order = strategy.exchange.create_market_sell_order('BTC/USDT', 0.01)
+            order = strategy.exchange.create_market_sell_order("BTC/USDT", 0.01)
             trade = Trade.objects.create(
-                strategy=strategy,
-                action='short',
-                amount=0.01,
-                price=order['price']
+                strategy=strategy, action="short", amount=0.01, price=order["price"]
             )
         else:
             return "Hold"
 
     # Обучение модели после размещения трейда
-    trade_result = {'profit': trade.price * 0.01 if trade.action == 'short' else -trade.price * 0.01}
+    trade_result = {
+        "profit": trade.price * 0.01 if trade.action == "short" else -trade.price * 0.01
+    }
     historical_data = [[trade.price, 1000]]
     news_data = ["Market news"]
     train_model_on_trade.delay(trade_result, historical_data, news_data)
@@ -85,6 +79,7 @@ def run_bot(strategy_id):
     place_trade.delay(action, strategy_id)
     return "Bot run with RL prediction"
 
+
 @shared_task
 def calculate_metrics(strategy_id):
     """
@@ -95,11 +90,11 @@ def calculate_metrics(strategy_id):
     - win_rate: Процент выигрышных сделок (предполагаем, что profit > 0 — выигрыш).
     - total_profit: Общая прибыль/убыток.
     - avg_profit: Средняя прибыль на сделку.
-    
-    В демо-режиме использует симулированные прибыли (на основе цены). 
-    В реальном режиме — предполагает, что в модели Trade есть поле 'profit' 
+
+    В демо-режиме использует симулированные прибыли (на основе цены).
+    В реальном режиме — предполагает, что в модели Trade есть поле 'profit'
     (если нет, добавьте его в модель или доработайте расчёт).
-    
+
     Если стратегия не найдена, возвращает ошибку.
 
     Параметры:
@@ -111,43 +106,47 @@ def calculate_metrics(strategy_id):
     try:
         strategy = Strategy.objects.get(id=strategy_id)
         trades = Trade.objects.filter(strategy=strategy)
-        
+
         if not trades.exists():
-            return {'error': 'No trades found for this strategy.'}
-        
+            return {"error": "No trades found for this strategy."}
+
         total_trades = trades.count()
         profits = []
-        
+
         for trade in trades:
             if settings.DEMO_MODE:
                 # Симуляция прибыли: для long +1% от цены, для short -1% (упрощённо; доработайте по логике)
-                if trade.action == 'long':
+                if trade.action == "long":
                     profit = trade.price * trade.amount * 0.01  # +1% прибыль
-                elif trade.action == 'short':
-                    profit = -trade.price * trade.amount * 0.01  # -1% убыток (или инвертируйте)
+                elif trade.action == "short":
+                    profit = (
+                        -trade.price * trade.amount * 0.01
+                    )  # -1% убыток (или инвертируйте)
                 else:
                     profit = 0
                 # Если в модели нет поля profit, сохраните его здесь: trade.profit = profit; trade.save()
             else:
                 # В реальном режиме: используйте реальный profit из ордера или модели
-                profit = getattr(trade, 'profit', 0)  # Предполагаем поле 'profit' в модели Trade
-            
+                profit = getattr(
+                    trade, "profit", 0
+                )  # Предполагаем поле 'profit' в модели Trade
+
             profits.append(profit)
-        
+
         wins = sum(1 for p in profits if p > 0)
         total_profit = sum(profits)
         avg_profit = total_profit / total_trades if total_trades > 0 else 0
         win_rate = (wins / total_trades * 100) if total_trades > 0 else 0
-        
+
         return {
-            'total_trades': total_trades,
-            'win_rate': round(win_rate, 2),
-            'total_profit': round(total_profit, 2),
-            'avg_profit': round(avg_profit, 2),
-            'strategy_name': strategy.name  # Дополнительно, для удобства
+            "total_trades": total_trades,
+            "win_rate": round(win_rate, 2),
+            "total_profit": round(total_profit, 2),
+            "avg_profit": round(avg_profit, 2),
+            "strategy_name": strategy.name,  # Дополнительно, для удобства
         }
-    
+
     except Strategy.DoesNotExist:
-        return {'error': f'Strategy with ID {strategy_id} not found.'}
+        return {"error": f"Strategy with ID {strategy_id} not found."}
     except Exception as e:
-        return {'error': f'Error calculating metrics: {str(e)}'}
+        return {"error": f"Error calculating metrics: {str(e)}"}

@@ -8,12 +8,11 @@
 
 import os
 
+from cryptography.fernet import Fernet
+from django.contrib.auth.models import User
 from django.core.validators import JSONSchemaValidator
 from django.db import models, transaction
-from django.contrib.auth.models import User
 from django.utils import timezone
-from cryptography.fernet import Fernet
-
 
 # Схема для валидации parameters (пример: ограничение типов)
 PARAMETERS_SCHEMA = {
@@ -40,7 +39,10 @@ class ApiKey(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
-        unique_together = ('user', 'exchange')  # Запрет дублирования ключей для одной биржи
+        unique_together = (
+            "user",
+            "exchange",
+        )  # Запрет дублирования ключей для одной биржи
 
     def __str__(self):
         return f"{self.exchange} - {self.user.username}"
@@ -51,7 +53,7 @@ class ApiKey(models.Model):
 
         Использует Fernet с ключом из окружения.
         """
-        fernet = Fernet(os.environ.get('FERNET_KEY').encode())
+        fernet = Fernet(os.environ.get("FERNET_KEY").encode())
         return fernet.decrypt(self.api_key.encode()).decode()
 
     def get_decrypted_secret(self):
@@ -60,7 +62,7 @@ class ApiKey(models.Model):
 
         Использует Fernet с ключом из окружения.
         """
-        fernet = Fernet(os.environ.get('FERNET_KEY').encode())
+        fernet = Fernet(os.environ.get("FERNET_KEY").encode())
         return fernet.decrypt(self.secret.encode()).decode()
 
 
@@ -77,9 +79,12 @@ class Strategy(models.Model):
     symbol = models.CharField(max_length=10, db_index=True)
     is_active = models.BooleanField(default=False)
     parameters = models.JSONField(
-        default=dict, validators=[JSONSchemaValidator(PARAMETERS_SCHEMA)]  # Валидация JSON
+        default=dict,
+        validators=[JSONSchemaValidator(PARAMETERS_SCHEMA)],  # Валидация JSON
     )
-    api_key = models.ForeignKey(ApiKey, on_delete=models.SET_NULL, null=True, blank=True)
+    api_key = models.ForeignKey(
+        ApiKey, on_delete=models.SET_NULL, null=True, blank=True
+    )
     profit_loss = models.FloatField(default=0.0)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
@@ -94,16 +99,21 @@ class Strategy(models.Model):
         Вычисляет на основе связанных трейдов, если кэш отсутствует.
         """
         from django.core.cache import cache
+
         cache_key = f"strategy_metrics_{self.id}"
         data = cache.get(cache_key)
         if not data:
             total_profit = sum(trade.profit_loss for trade in self.trade_set.all())
             win_rate = (
-                (self.trade_set.filter(profit_loss__gt=0).count() / self.trade_set.count()) * 100
+                (
+                    self.trade_set.filter(profit_loss__gt=0).count()
+                    / self.trade_set.count()
+                )
+                * 100
                 if self.trade_set.exists()
                 else 0
             )
-            data = {'profit': total_profit, 'win_rate': win_rate}
+            data = {"profit": total_profit, "win_rate": win_rate}
             cache.set(cache_key, data, 300)
         return data
 
@@ -116,11 +126,12 @@ class Strategy(models.Model):
         """
         if self.api_key:
             import ccxt
+
             exchange_class = getattr(ccxt, self.api_key.exchange)
             return exchange_class(
                 {
-                    'apiKey': self.api_key.get_decrypted_api_key(),
-                    'secret': self.api_key.get_decrypted_secret(),
+                    "apiKey": self.api_key.get_decrypted_api_key(),
+                    "secret": self.api_key.get_decrypted_secret(),
                 }
             )
         return None
@@ -135,17 +146,26 @@ class Strategy(models.Model):
         """
         try:
             from news.models import News  # Импорт из вашего news.py
-            news = News.objects.filter(symbol=self.symbol).order_by('-timestamp')[:limit]
+
+            news = News.objects.filter(symbol=self.symbol).order_by("-timestamp")[
+                :limit
+            ]
             if news.exists():
                 return news
             else:
                 # Если новостей нет, запускаем асинхронную задачу для загрузки
-                from news.tasks import get_news_sentiment  # Используем вашу реальную задачу
-                get_news_sentiment.delay(self.symbol, user_id=self.user.id)  # Передаём user_id
+                from news.tasks import (
+                    get_news_sentiment,  # Используем вашу реальную задачу
+                )
+
+                get_news_sentiment.delay(
+                    self.symbol, user_id=self.user.id
+                )  # Передаём user_id
                 return []  # Возвращаем пустой список, пока задача не выполнится
         except ImportError:
             # Если модель News недоступна, запускаем задачу и возвращаем []
             from news.tasks import get_news_sentiment
+
             get_news_sentiment.delay(self.symbol, user_id=self.user.id)
             return []
 
@@ -161,7 +181,7 @@ class Trade(models.Model):
     strategy = models.ForeignKey(Strategy, on_delete=models.CASCADE, db_index=True)
     symbol = models.CharField(max_length=10, db_index=True)
     action = models.CharField(
-        max_length=10, choices=[('long', 'Long'), ('short', 'Short'), ('hold', 'Hold')]
+        max_length=10, choices=[("long", "Long"), ("short", "Short"), ("hold", "Hold")]
     )  # Исправлено: Добавлены корректные choices
     amount = models.FloatField()
     price = models.FloatField()
@@ -187,8 +207,11 @@ class Trade(models.Model):
         Передаёт результат трейда, исторические данные и новости.
         """
         from analytics.tasks import train_model_on_trade
-        trade_result = {'profit': self.profit_loss}
-        historical_data = [[self.price, self.amount]]  # Упрощённо; расширьте для реальных данных
+
+        trade_result = {"profit": self.profit_loss}
+        historical_data = [
+            [self.price, self.amount]
+        ]  # Упрощённо; расширьте для реальных данных
         news_data = self.strategy.get_news()  # Интеграция новостей
         train_model_on_trade.delay(trade_result, historical_data, news_data)
 
@@ -201,13 +224,15 @@ class TradeAudit(models.Model):
     """
 
     user = models.ForeignKey(User, on_delete=models.CASCADE)
-    trade = models.ForeignKey('Trade', on_delete=models.CASCADE)
+    trade = models.ForeignKey("Trade", on_delete=models.CASCADE)
     action = models.CharField(
-        max_length=50, choices=[('create', 'Create'), ('update', 'Update'), ('delete', 'Delete')]
+        max_length=50,
+        choices=[("create", "Create"), ("update", "Update"), ("delete", "Delete")],
     )
     timestamp = models.DateTimeField(auto_now_add=True)
-    details = models.JSONField(default=dict)  # Дополнительные детали, например, изменения
+    details = models.JSONField(
+        default=dict
+    )  # Дополнительные детали, например, изменения
 
     class Meta:
-        ordering = ['-timestamp']
-
+        ordering = ["-timestamp"]

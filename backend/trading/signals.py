@@ -5,7 +5,7 @@
 автоматически создавая записи в TradeAudit с деталями действий.
 """
 
-from django.db.models.signals import post_save, post_delete
+from django.db.models.signals import post_delete, post_save
 from django.dispatch import receiver
 
 from .models import Trade, TradeAudit
@@ -19,12 +19,12 @@ def log_trade_save(sender, instance, created, **kwargs):
     При создании или сохранении трейда создаёт запись аудита с действием 'create' или 'update',
     включая детали о символе и сумме.
     """
-    action = 'create' if created else 'update'
+    action = "create" if created else "update"
     TradeAudit.objects.create(
         user=instance.user,
         trade=instance,
         action=action,
-        details={'symbol': instance.symbol, 'amount': instance.amount}
+        details={"symbol": instance.symbol, "amount": instance.amount},
     )
 
 
@@ -39,6 +39,6 @@ def log_trade_delete(sender, instance, **kwargs):
     TradeAudit.objects.create(
         user=instance.user,
         trade=instance,
-        action='delete',
-        details={'symbol': instance.symbol}
+        action="delete",
+        details={"symbol": instance.symbol},
     )

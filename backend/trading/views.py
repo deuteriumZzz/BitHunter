@@ -8,18 +8,18 @@
 """
 
 import os
+
 from cryptography.fernet import Fernet
 from django.contrib.auth.decorators import login_required
 from django.http import JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.utils.decorators import method_decorator
 from django.views import View
-
 from rest_framework import viewsets  # Добавлен импорт для ViewSets
 from rest_framework.permissions import IsAuthenticated  # Для аутентификации в ViewSets
 
 from .forms import ApiKeyForm, StrategyForm
-from .models import ApiKey, Strategy, Trade
+from .models import ApiKey, Strategy
 from .tasks import calculate_metrics, run_bot
 
 
@@ -37,8 +37,12 @@ def strategy_list(request):
     Возвращает:
     - HttpResponse: Рендеренный шаблон 'trading/strategy_list.html' с контекстом стратегий.
     """
-    strategies = Strategy.objects.filter(user=request.user).select_related('user').prefetch_related('parameters')  # Добавлена оптимизация для производительности
-    return render(request, 'trading/strategy_list.html', {'strategies': strategies})
+    strategies = (
+        Strategy.objects.filter(user=request.user)
+        .select_related("user")
+        .prefetch_related("parameters")
+    )  # Добавлена оптимизация для производительности
+    return render(request, "trading/strategy_list.html", {"strategies": strategies})
 
 
 @login_required
@@ -57,16 +61,16 @@ def strategy_create(request):
     - HttpResponse: Рендеренный шаблон 'trading/strategy_form.html' с формой
       или перенаправление на 'strategy_list'.
     """
-    if request.method == 'POST':
+    if request.method == "POST":
         form = StrategyForm(request.POST)
         if form.is_valid():
             strategy = form.save(commit=False)
             strategy.user = request.user
             strategy.save()
-            return redirect('strategy_list')
+            return redirect("strategy_list")
     else:
         form = StrategyForm()
-    return render(request, 'trading/strategy_form.html', {'form': form})
+    return render(request, "trading/strategy_form.html", {"form": form})
 
 
 @login_required
@@ -86,10 +90,12 @@ def start_bot(request, strategy_id):
     """
     try:
         strategy = get_object_or_404(Strategy, id=strategy_id, user=request.user)
-        run_bot.delay(strategy_id)  # Исправлено: start_trading на run_bot, добавлен demo=True как параметр по умолчанию в задаче
-        return JsonResponse({'status': 'started'})
+        run_bot.delay(
+            strategy_id
+        )  # Исправлено: start_trading на run_bot, добавлен demo=True как параметр по умолчанию в задаче
+        return JsonResponse({"status": "started"})
     except Exception as e:
-        return JsonResponse({'error': str(e)}, status=500)
+        return JsonResponse({"error": str(e)}, status=500)
 
 
 @login_required
@@ -111,9 +117,9 @@ def strategy_metrics(request, strategy_id):
     try:
         strategy = get_object_or_404(Strategy, id=strategy_id, user=request.user)
         task = calculate_metrics.delay(strategy_id)
-        return JsonResponse({'task_id': task.id})
+        return JsonResponse({"task_id": task.id})
     except Exception as e:
-        return JsonResponse({'error': str(e)}, status=500)
+        return JsonResponse({"error": str(e)}, status=500)
 
 
 # Дополнительное представление для получения результата метрик по task_id (рекомендуется добавить в urls.py)
@@ -130,14 +136,15 @@ def get_metrics_result(request, task_id):
     - JsonResponse: Метрики или статус задачи.
     """
     from celery.result import AsyncResult
+
     result = AsyncResult(task_id)
     if result.ready():
         if result.successful():
             return JsonResponse(result.result)
         else:
-            return JsonResponse({'error': str(result.info)}, status=500)
+            return JsonResponse({"error": str(result.info)}, status=500)
     else:
-        return JsonResponse({'status': 'pending'})
+        return JsonResponse({"status": "pending"})
 
 
 class ApiKeyView(View):
@@ -161,7 +168,7 @@ class ApiKeyView(View):
         """
         keys = ApiKey.objects.filter(user=request.user)
         form = ApiKeyForm()
-        return render(request, 'trading/api_keys.html', {'keys': keys, 'form': form})
+        return render(request, "trading/api_keys.html", {"keys": keys, "form": form})
 
     @method_decorator(login_required)
     def post(self, request):
@@ -182,7 +189,7 @@ class ApiKeyView(View):
         form = ApiKeyForm(request.POST)
         if form.is_valid():
             try:
-                fernet_key = os.environ.get('FERNET_KEY')
+                fernet_key = os.environ.get("FERNET_KEY")
                 if not fernet_key:
                     raise ValueError("FERNET_KEY environment variable is not set.")
                 fernet = Fernet(fernet_key.encode())
@@ -191,10 +198,10 @@ class ApiKeyView(View):
                 key.api_key = fernet.encrypt(key.api_key.encode()).decode()
                 key.secret = fernet.encrypt(key.secret.encode()).decode()
                 key.save()
-                return redirect('api_keys')
+                return redirect("api_keys")
             except Exception as e:
                 form.add_error(None, f"Error encrypting or saving API key: {str(e)}")
-        return render(request, 'trading/api_key_form.html', {'form': form})
+        return render(request, "trading/api_key_form.html", {"form": form})
 
 
 # Добавлен ViewSet для стратегий с оптимизацией производительности
@@ -205,8 +212,11 @@ class StrategyViewSet(viewsets.ModelViewSet):
     Использует select_related для оптимизации запросов к связанным объектам (user)
     и prefetch_related для параметров стратегии.
     """
-    queryset = Strategy.objects.select_related('user').prefetch_related('parameters')
-    permission_classes = [IsAuthenticated]  # Убедитесь, что пользователь аутентифицирован
+
+    queryset = Strategy.objects.select_related("user").prefetch_related("parameters")
+    permission_classes = [
+        IsAuthenticated
+    ]  # Убедитесь, что пользователь аутентифицирован
 
     def get_queryset(self):
         # Фильтрация по текущему пользователю для безопасности

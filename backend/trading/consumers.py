@@ -23,7 +23,7 @@ class TradingConsumer(AsyncWebsocketConsumer):
         Принимает соединение и отправляет подтверждение.
         """
         await self.accept()
-        await self.send(text_data=json.dumps({'message': 'Connected to trading'}))
+        await self.send(text_data=json.dumps({"message": "Connected to trading"}))
 
     async def disconnect(self, close_code):
         """
@@ -40,7 +40,8 @@ class TradingConsumer(AsyncWebsocketConsumer):
         Если тип сообщения 'start_trading', запускает задачу трейдинга асинхронно и отправляет статус.
         """
         data = json.loads(text_data)
-        if data['type'] == 'start_trading':
+        if data["type"] == "start_trading":
             from .tasks import run_bot
-            run_bot.delay(data['strategy_id'])
-            await self.send(text_data=json.dumps({'status': 'started'}))
+
+            run_bot.delay(data["strategy_id"])
+            await self.send(text_data=json.dumps({"status": "started"}))

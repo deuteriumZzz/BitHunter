@@ -13,6 +13,7 @@ class TradingConfig(AppConfig):
 
     Устанавливает тип авто-поля по умолчанию и имя приложения.
     """
-    default_auto_field = 'django.db.models.BigAutoField'
-    name = 'trading'
-    verbose_name = 'трейдинг'
+
+    default_auto_field = "django.db.models.BigAutoField"
+    name = "trading"
+    verbose_name = "трейдинг"
