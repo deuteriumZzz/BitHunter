@@ -12,13 +12,16 @@
 """
 
 import logging
-import numpy as np
+
 import gym
-from gym import spaces
+import numpy as np
 from django.core.exceptions import ValidationError
-from .models import AnalyticsData, Prediction
+from gym import spaces
+
+from .models import Prediction
 
 logger = logging.getLogger(__name__)
+
 
 class TradingEnv(gym.Env):
     """
@@ -42,7 +45,7 @@ class TradingEnv(gym.Env):
         user=None,
         stop_loss=0.05,  # 5% убыток для выхода
         take_profit=0.10,  # 10% прибыль для выхода
-        hold_penalty=0.1  # Штраф за hold в убыточной позиции
+        hold_penalty=0.1,  # Штраф за hold в убыточной позиции
     ):
         """
         Инициализация среды.
@@ -61,9 +64,7 @@ class TradingEnv(gym.Env):
         self.news_features = np.array(news_features).reshape(-1, 1)
 
         if len(self.historical_data) == 0 or len(self.news_features) == 0:
-            raise ValidationError(
-                "historical_data and news_features cannot be empty"
-            )
+            raise ValidationError("historical_data and news_features cannot be empty")
         if len(self.historical_data) != len(self.news_features):
             raise ValidationError(
                 "historical_data and news_features must have the same length"
@@ -89,9 +90,7 @@ class TradingEnv(gym.Env):
         self.action_space = spaces.Discrete(3)
 
         # Обновлено: 7 фич (price, volume, sentiment, balance, sma5, sma10, rsi)
-        self.observation_space = spaces.Box(
-            low=0, high=1, shape=(7,), dtype=np.float32
-        )
+        self.observation_space = spaces.Box(low=0, high=1, shape=(7,), dtype=np.float32)
 
         # Нормализация для price, volume, sentiment
         self.price_min = np.min(self.historical_data[:, 0])
@@ -113,25 +112,27 @@ class TradingEnv(gym.Env):
         self.rsi_max = 100
 
         # Коррекция для избежания деления на ноль
-        for attr in ['price', 'volume', 'sentiment', 'sma5', 'sma10', 'rsi']:
-            min_attr = getattr(self, f'{attr}_min')
-            max_attr = getattr(self, f'{attr}_max')
+        for attr in ["price", "volume", "sentiment", "sma5", "sma10", "rsi"]:
+            min_attr = getattr(self, f"{attr}_min")
+            max_attr = getattr(self, f"{attr}_max")
             if max_attr == min_attr:
-                setattr(self, f'{attr}_min', min_attr - 1e-6)
-                setattr(self, f'{attr}_max', max_attr + 1e-6)
+                setattr(self, f"{attr}_min", min_attr - 1e-6)
+                setattr(self, f"{attr}_max", max_attr + 1e-6)
 
     def _precompute_features(self):
         """Предварительный расчёт SMA и RSI для всех шагов."""
         prices = self.historical_data[:, 0]
-        self.sma5 = np.convolve(prices, np.ones(5)/5, mode='valid')
-        self.sma5 = np.concatenate([np.full(4, prices[0]), self.sma5])  # Паддинг для первых шагов
-        self.sma10 = np.convolve(prices, np.ones(10)/10, mode='valid')
+        self.sma5 = np.convolve(prices, np.ones(5) / 5, mode="valid")
+        self.sma5 = np.concatenate(
+            [np.full(4, prices[0]), self.sma5]
+        )  # Паддинг для первых шагов
+        self.sma10 = np.convolve(prices, np.ones(10) / 10, mode="valid")
         self.sma10 = np.concatenate([np.full(9, prices[0]), self.sma10])
 
         # RSI (простая реализация)
         self.rsi = np.zeros(len(prices))
         for i in range(14, len(prices)):
-            gains = np.diff(prices[i-14:i+1])
+            gains = np.diff(prices[i - 14 : i + 1])
             avg_gain = np.mean(gains[gains > 0]) if np.any(gains > 0) else 0
             avg_loss = -np.mean(gains[gains < 0]) if np.any(gains < 0) else 0
             rs = avg_gain / avg_loss if avg_loss != 0 else 100
@@ -174,7 +175,11 @@ class TradingEnv(gym.Env):
 
         # Проверка стоп-лосс/тейк-профит перед действием
         if self.position != 0 and self.entry_price is not None:
-            pnl = (current_price - self.entry_price) / self.entry_price if self.position == 1 else (self.entry_price - current_price) / self.entry_price
+            pnl = (
+                (current_price - self.entry_price) / self.entry_price
+                if self.position == 1
+                else (self.entry_price - current_price) / self.entry_price
+            )
             if pnl <= -self.stop_loss or pnl >= self.take_profit:
                 # Автоматический выход из позиции
                 if self.position == 1:
@@ -208,12 +213,18 @@ class TradingEnv(gym.Env):
 
         # Штраф за hold в убыточной позиции
         if action == 0 and self.position != 0 and self.entry_price is not None:
-            pnl = (current_price - self.entry_price) / self.entry_price if self.position == 1 else (self.entry_price - current_price) / self.entry_price
+            pnl = (
+                (current_price - self.entry_price) / self.entry_price
+                if self.position == 1
+                else (self.entry_price - current_price) / self.entry_price
+            )
             if pnl < 0:
                 reward -= self.hold_penalty
 
         # Компонент риска: штраф за drawdown (упрощённо, на основе текущего баланса)
-        risk_penalty = max(0, (self.initial_balance - self.balance) / self.initial_balance * 10)
+        risk_penalty = max(
+            0, (self.initial_balance - self.balance) / self.initial_balance * 10
+        )
         reward -= risk_penalty
 
         self.total_reward += reward
@@ -230,7 +241,7 @@ class TradingEnv(gym.Env):
                         self.historical_data[self.current_step + 1, 0]
                         if self.current_step + 1 <= self.max_steps
                         else None
-                    )
+                    ),
                 )
                 prediction.save()
             except Exception as e:
@@ -240,7 +251,9 @@ class TradingEnv(gym.Env):
         done = self.current_step >= self.max_steps
         obs = self._get_obs()
 
-        logger.debug(f"Action taken: {action}, Reward: {reward}, Balance: {self.balance}")
+        logger.debug(
+            f"Action taken: {action}, Reward: {reward}, Balance: {self.balance}"
+        )
         return obs, reward, done, {}
 
     def _get_obs(self):
@@ -262,17 +275,27 @@ class TradingEnv(gym.Env):
 
         price_norm = (price - self.price_min) / (self.price_max - self.price_min)
         volume_norm = (volume - self.volume_min) / (self.volume_max - self.volume_min)
-        sentiment_norm = (sentiment - self.sentiment_min) / (self.sentiment_max - self.sentiment_min)
+        sentiment_norm = (sentiment - self.sentiment_min) / (
+            self.sentiment_max - self.sentiment_min
+        )
         sma5_norm = (sma5 - self.sma5_min) / (self.sma5_max - self.sma5_min)
         sma10_norm = (sma10 - self.sma10_min) / (self.sma10_max - self.sma10_min)
         rsi_norm = (rsi - self.rsi_min) / (self.rsi_max - self.rsi_min)
 
         return np.array(
-            [price_norm, volume_norm, sentiment_norm, balance_norm, sma5_norm, sma10_norm, rsi_norm],
-            dtype=np.float32
+            [
+                price_norm,
+                volume_norm,
+                sentiment_norm,
+                balance_norm,
+                sma5_norm,
+                sma10_norm,
+                rsi_norm,
+            ],
+            dtype=np.float32,
         )
 
-    def render(self, mode='human'):
+    def render(self, mode="human"):
         """
         Визуализация состояния среды (для отладки).
 
@@ -325,21 +348,29 @@ class TradingEnv(gym.Env):
 
         # Расчёт Sharpe ratio и VaR на основе portfolio_values
         if len(self.portfolio_values) > 1:
-            returns = np.diff(self.portfolio_values) / np.array(self.portfolio_values[:-1])
-            sharpe_ratio = np.mean(returns) / np.std(returns) * np.sqrt(252) if np.std(returns) > 0 else 0  # Годовой Sharpe
+            returns = np.diff(self.portfolio_values) / np.array(
+                self.portfolio_values[:-1]
+            )
+            sharpe_ratio = (
+                np.mean(returns) / np.std(returns) * np.sqrt(252)
+                if np.std(returns) > 0
+                else 0
+            )  # Годовой Sharpe
             var_95 = np.percentile(returns, 5)  # VaR 95% (нижний 5-й процентиль)
         else:
             sharpe_ratio = 0
             var_95 = 0
 
-        logger.info(f"Backtest results: Total reward {total_reward}, Sharpe {sharpe_ratio:.2f}, VaR 95% {var_95:.4f}")
+        logger.info(
+            f"Backtest results: Total reward {total_reward}, Sharpe {sharpe_ratio:.2f}, VaR 95% {var_95:.4f}"
+        )
 
         return {
-            'total_reward': total_reward,
-            'win_rate': win_rate,
-            'max_drawdown': max_drawdown,
-            'final_balance': self.balance,
-            'num_trades': wins + losses,
-            'sharpe_ratio': sharpe_ratio,
-            'var_95': var_95
+            "total_reward": total_reward,
+            "win_rate": win_rate,
+            "max_drawdown": max_drawdown,
+            "final_balance": self.balance,
+            "num_trades": wins + losses,
+            "sharpe_ratio": sharpe_ratio,
+            "var_95": var_95,
         }

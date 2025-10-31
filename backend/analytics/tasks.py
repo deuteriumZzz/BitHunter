@@ -6,19 +6,20 @@
 
 import logging
 import os
+from datetime import timedelta
 
 import ccxt
 import numpy as np
 from celery import shared_task
 from django.db.models import Avg
 from django.utils import timezone
+from news.models import News
 from stable_baselines3 import PPO
 from textblob import TextBlob
-from datetime import timedelta
+
+from analytics.trading_env import TradingEnv
 
 from .models import AnalyticsData, Prediction
-from analytics.trading_env import TradingEnv
-from news.models import News
 
 logger = logging.getLogger(__name__)
 
@@ -29,7 +30,7 @@ def get_model():
     """
     Ленивая инициализация RL-модели PPO.
     Загружает модель из файла, если существует, иначе создает новую.
-    
+
     :return: Объект модели PPO.
     """
     global _model
@@ -46,18 +47,17 @@ def get_model():
 def fetch_historical_data():
     """
     Получить исторические данные с использованием активных стратегий.
-    
+
     :return: Сообщение об успехе или ошибке.
     """
     try:
         from trading.models import Strategy
+
         active_strategies = Strategy.objects.filter(is_active=True)
         for strategy in active_strategies:
             if strategy.exchange:
                 data = strategy.exchange.fetch_ohlcv(
-                    strategy.symbol,
-                    timeframe='1h',
-                    limit=100
+                    strategy.symbol, timeframe="1h", limit=100
                 )
                 for candle in data:
                     AnalyticsData.objects.create(
@@ -65,7 +65,7 @@ def fetch_historical_data():
                         timestamp=candle[0] / 1000,
                         price=candle[4],
                         volume=candle[5],
-                        user=strategy.user
+                        user=strategy.user,
                     )
         logger.info("Historical data fetched successfully")
         return "Historical data fetched"
@@ -78,19 +78,18 @@ def fetch_historical_data():
 def train_ml_model():
     """
     Обучить ML-модель с использованием RL и данных новостей.
-    
+
     :return: Сообщение об успехе или ошибке.
     """
     try:
         try:
             from news.tasks import get_news_sentiment
+
             news_features = np.array(get_news_sentiment()).reshape(-1, 1)
         except ImportError:
             news_features = np.zeros((len(data), 1))
 
-        data = list(
-            AnalyticsData.objects.values_list('price', 'volume')
-        )
+        data = list(AnalyticsData.objects.values_list("price", "volume"))
         if not data:
             return "No historical data available"
 
@@ -113,10 +112,11 @@ def train_ml_model():
 def predict_price():
     """
     Предсказать цену с использованием RL-модели.
-    
+
     :return: Действие предсказания или сообщение об ошибке.
     """
     from news.tasks import get_news_sentiment
+
     try:
         last_hist = AnalyticsData.objects.last()
         if not last_hist:
@@ -124,9 +124,8 @@ def predict_price():
 
         try:
             from news.tasks import get_news_sentiment
-            news_sentiment = (
-                get_news_sentiment()[0] if get_news_sentiment() else 0
-            )
+
+            news_sentiment = get_news_sentiment()[0] if get_news_sentiment() else 0
         except ImportError:
             news_sentiment = 0
 
@@ -135,9 +134,7 @@ def predict_price():
         model = get_model()
         action, _ = model.predict(obs)
         prediction = Prediction(
-            action=action,
-            predicted_price=last_hist.price,
-            user=last_hist.user
+            action=action, predicted_price=last_hist.price, user=last_hist.user
         )
         prediction.save()
         logger.info(f"Prediction made: action {action}")
@@ -151,7 +148,7 @@ def predict_price():
 def train_model_on_trade(trade_result, historical_data, news_data):
     """
     Обучить модель после сделки (онлайн-обучение).
-    
+
     :param trade_result: Результат сделки.
     :param historical_data: Исторические данные.
     :param news_data: Данные новостей.
@@ -159,14 +156,14 @@ def train_model_on_trade(trade_result, historical_data, news_data):
     """
     try:
         reward = (
-            trade_result.get('profit', 0)
-            if trade_result.get('profit', 0) > 0 else -1
+            trade_result.get("profit", 0) if trade_result.get("profit", 0) > 0 else -1
         )
         news_features = (
-            np.array([
-                TextBlob(text).sentiment.polarity for text in news_data
-            ]).reshape(-1, 1)
-            if news_data else np.zeros((len(historical_data), 1))
+            np.array([TextBlob(text).sentiment.polarity for text in news_data]).reshape(
+                -1, 1
+            )
+            if news_data
+            else np.zeros((len(historical_data), 1))
         )
 
         env = TradingEnv(historical_data, news_features)
@@ -186,31 +183,26 @@ def analyze_data_with_news(symbol, user_id=None):
     """
     Анализ данных с использованием sentiment из новостей для RL-предсказаний.
     Обновляет AnalyticsData и связывает с News.
-    
+
     :param symbol: Символ актива.
     :param user_id: ID пользователя (опционально).
     :return: Сообщение об успехе или ошибке.
     """
     try:
         past_24h = timezone.now() - timedelta(hours=24)
-        news_qs = News.objects.filter(
-            symbol=symbol,
-            timestamp__gte=past_24h
-        )
+        news_qs = News.objects.filter(symbol=symbol, timestamp__gte=past_24h)
         if user_id:
             news_qs = news_qs.filter(user_id=user_id)
 
-        avg_sentiment = (
-            news_qs.aggregate(Avg('sentiment'))['sentiment__avg'] or 0.0
-        )
+        avg_sentiment = news_qs.aggregate(Avg("sentiment"))["sentiment__avg"] or 0.0
 
         analytics, created = AnalyticsData.objects.get_or_create(
             symbol=symbol,
             user_id=user_id,
             defaults={
-                'data': {},
-                'news_sentiment': avg_sentiment,
-            }
+                "data": {},
+                "news_sentiment": avg_sentiment,
+            },
         )
         if not created:
             analytics.news_sentiment = avg_sentiment
@@ -229,10 +221,10 @@ def analyze_data_with_news(symbol, user_id=None):
 
 
 @shared_task
-def bulk_load_historical_data(symbol, timeframe='1h', limit=1000):
+def bulk_load_historical_data(symbol, timeframe="1h", limit=1000):
     """
     Массово загрузить исторические данные для символа.
-    
+
     :param symbol: Символ актива.
     :param timeframe: Временной интервал.
     :param limit: Количество записей.
@@ -247,16 +239,18 @@ def bulk_load_historical_data(symbol, timeframe='1h', limit=1000):
             high=d[2],
             low=d[3],
             close=d[4],
-            volume=d[5]
-        ) for d in data
+            volume=d[5],
+        )
+        for d in data
     ]
     AnalyticsData.objects.bulk_create(objects, ignore_conflicts=True)
+
 
 @shared_task
 def train_lstm_model(base_dir, limit=1000, epochs=100, batch_size=32):
     """
     Асинхронная задача для обучения LSTM-модели.
-    
+
     :param base_dir: Базовая директория (например, settings.BASE_DIR).
     :param limit: Количество данных для загрузки.
     :param epochs: Эпохи обучения.
@@ -265,6 +259,7 @@ def train_lstm_model(base_dir, limit=1000, epochs=100, batch_size=32):
     """
     try:
         from .model_trainer import ModelTrainer  # Импорт из model_trainer.py
+
         trainer = ModelTrainer(base_dir)
         data = trainer.load_data_from_csv(limit=limit)
         if data is None or len(data) < 100:
