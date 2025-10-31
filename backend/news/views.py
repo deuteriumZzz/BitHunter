@@ -5,7 +5,6 @@
 """
 
 from django_filters.rest_framework import DjangoFilterBackend
-
 from rest_framework import viewsets
 from rest_framework.filters import OrderingFilter
 
@@ -25,9 +24,9 @@ class NewsViewSet(viewsets.ModelViewSet):
     queryset = News.objects.all()
     serializer_class = NewsSerializer
     filter_backends = [DjangoFilterBackend, OrderingFilter]
-    filterset_fields = ['symbol', 'user', 'sentiment']  # Фильтры
-    ordering_fields = ['timestamp', 'sentiment']  # Сортировка
-    ordering = ['-timestamp']  # По умолчанию по времени убывания
+    filterset_fields = ["symbol", "user", "sentiment"]  # Фильтры
+    ordering_fields = ["timestamp", "sentiment"]  # Сортировка
+    ordering = ["-timestamp"]  # По умолчанию по времени убывания
 
     def get_queryset(self):
         """

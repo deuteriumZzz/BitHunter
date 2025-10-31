@@ -10,43 +10,36 @@ class News(models.Model):
     Содержит информацию о новости, включая символ, заголовок,
     описание, ссылку, sentiment и временную метку.
     """
+
     user = models.ForeignKey(
         User,
         on_delete=models.CASCADE,
         blank=True,
         null=True,
-        help_text="Опционально, для персонализации новостей"
+        help_text="Опционально, для персонализации новостей",
     )
     symbol = models.CharField(
-        max_length=10,
-        help_text="Символ криптовалюты, например BTC"
+        max_length=10, help_text="Символ криптовалюты, например BTC"
     )
     title = models.TextField(help_text="Заголовок новости")
-    description = models.TextField(
-        blank=True,
-        help_text="Описание новости"
-    )
+    description = models.TextField(blank=True, help_text="Описание новости")
     url = models.URLField(help_text="Ссылка на новость")
     sentiment = models.FloatField(
         default=0.0,
-        validators=[
-            MinValueValidator(-1.0),
-            MaxValueValidator(1.0)
-        ],
-        help_text="Polarity sentiment от TextBlob"
+        validators=[MinValueValidator(-1.0), MaxValueValidator(1.0)],
+        help_text="Polarity sentiment от TextBlob",
     )
     timestamp = models.DateTimeField(
-        auto_now_add=True,
-        help_text="Время получения новости"
+        auto_now_add=True, help_text="Время получения новости"
     )
 
     class Meta:
-        ordering = ['-timestamp']
+        ordering = ["-timestamp"]
         indexes = [
-            models.Index(fields=['symbol', 'timestamp']),
-            models.Index(fields=['sentiment']),
+            models.Index(fields=["symbol", "timestamp"]),
+            models.Index(fields=["sentiment"]),
         ]
-        unique_together = ('symbol', 'url')
+        unique_together = ("symbol", "url")
 
     def __str__(self):
         """
@@ -54,7 +47,4 @@ class News(models.Model):
 
         Включает символ, начало заголовка и значение sentiment.
         """
-        return (
-            f"{self.symbol}: {self.title[:50]}... "
-            f"(Sentiment: {self.sentiment:.2f})"
-        )
+        return f"{self.symbol}: {self.title[:50]}... (Sentiment: {self.sentiment:.2f})"
