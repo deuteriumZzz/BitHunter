@@ -8,20 +8,21 @@
 
 import logging
 
-import ccxt
-import numpy as np
-import tensorflow as tf
+from api.serializers import AnalyticsSerializer
 from django.core.cache import cache
 from django_filters.rest_framework import DjangoFilterBackend
+from django_prometheus.models import model_to_counter
 from rest_framework import status, viewsets
 from rest_framework.decorators import action
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
-from django_prometheus.models import model_to_counter
 
 from .models import AnalyticsData, Prediction, Trade
-from .tasks import analyze_data_with_news, predict_price, train_ml_model  # Исправлены импорты на основе tasks.py
-from api.serializers import AnalyticsSerializer
+from .tasks import (
+    analyze_data_with_news,
+    predict_price,
+    train_ml_model,
+)  # Исправлены импорты на основе tasks.py
 
 logger = logging.getLogger(__name__)
 
@@ -34,11 +35,12 @@ class AnalyticsViewSet(viewsets.ModelViewSet):
     а также кастомные действия для истории, предсказаний,
     анализа новостей и обучения моделей.
     """
+
     queryset = AnalyticsData.objects.all()
     serializer_class = AnalyticsSerializer
     permission_classes = [IsAuthenticated]
     filter_backends = [DjangoFilterBackend]
-    filterset_fields = ['symbol']
+    filterset_fields = ["symbol"]
 
     def get_queryset(self):
         """
@@ -49,7 +51,7 @@ class AnalyticsViewSet(viewsets.ModelViewSet):
         """
         return super().get_queryset().filter(user=self.request.user)
 
-    @action(detail=False, methods=['get'])
+    @action(detail=False, methods=["get"])
     def history(self, request):
         """
         Получает исторические данные для символа, используя задачу bulk_load_historical_data.
@@ -60,50 +62,56 @@ class AnalyticsViewSet(viewsets.ModelViewSet):
         Returns:
             Response: Данные истории или ошибка.
         """
-        symbol = request.query_params.get('symbol')
-        period = request.query_params.get('period', '1h')  # Изменено на '1h' по умолчанию, как в tasks.py
+        symbol = request.query_params.get("symbol")
+        period = request.query_params.get(
+            "period", "1h"
+        )  # Изменено на '1h' по умолчанию, как в tasks.py
         if not symbol:
             return Response(
-                {'error': 'Symbol required'},
-                status=status.HTTP_400_BAD_REQUEST
+                {"error": "Symbol required"}, status=status.HTTP_400_BAD_REQUEST
             )
 
-        cache_key = f'history_{symbol}_{period}'
+        cache_key = f"history_{symbol}_{period}"
         cached_data = cache.get(cache_key)
         if cached_data:
-            return Response({'data': cached_data})
+            return Response({"data": cached_data})
 
         try:
             # Вызываем задачу bulk_load_historical_data для загрузки данных
             from .tasks import bulk_load_historical_data
-            bulk_load_historical_data.delay(symbol, period, 100)  # limit=100, как в оригинале
+
+            bulk_load_historical_data.delay(
+                symbol, period, 100
+            )  # limit=100, как в оригинале
 
             # После вызова задачи, получаем данные из БД (предполагаем, что задача сохранила их)
             # Поскольку bulk_load_historical_data сохраняет данные, извлекаем их
-            analytics_data = AnalyticsData.objects.filter(symbol=symbol, user=request.user).order_by('-timestamp')[:100]
+            analytics_data = AnalyticsData.objects.filter(
+                symbol=symbol, user=request.user
+            ).order_by("-timestamp")[:100]
             data = [
                 {
-                    'timestamp': obj.timestamp,
-                    'open': obj.open,
-                    'high': obj.high,
-                    'low': obj.low,
-                    'close': obj.close,
-                    'volume': obj.volume
+                    "timestamp": obj.timestamp,
+                    "open": obj.open,
+                    "high": obj.high,
+                    "low": obj.low,
+                    "close": obj.close,
+                    "volume": obj.volume,
                 }
                 for obj in analytics_data
             ]
 
             cache.set(cache_key, data, timeout=3600)
 
-            return Response({'data': data})
+            return Response({"data": data})
         except Exception as e:
             logger.error(f"Error in history: {e}")
             return Response(
-                {'error': 'Failed to fetch data'},
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+                {"error": "Failed to fetch data"},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
 
-    @action(detail=False, methods=['post'])
+    @action(detail=False, methods=["post"])
     def predict(self, request):
         """
         Выполняет предсказание цены с использованием задачи predict_price.
@@ -114,35 +122,38 @@ class AnalyticsViewSet(viewsets.ModelViewSet):
         Returns:
             Response: Предсказание (действие) или ошибка.
         """
-        symbol = request.data.get('symbol')
+        symbol = request.data.get("symbol")
         if not symbol:
             return Response(
-                {'error': 'Symbol required'},
-                status=status.HTTP_400_BAD_REQUEST
+                {"error": "Symbol required"}, status=status.HTTP_400_BAD_REQUEST
             )
 
         try:
             # Вызываем задачу predict_price, которая использует RL-модель и сохраняет результат
-            action = predict_price.delay().get()  # predict_price не принимает параметры, использует last_hist
+            action = (
+                predict_price.delay().get()
+            )  # predict_price не принимает параметры, использует last_hist
 
             # Получаем последнее предсказание из БД
             last_prediction = Prediction.objects.filter(user=request.user).last()
             if last_prediction:
-                return Response({
-                    'action': action,
-                    'predicted_price': last_prediction.predicted_price,
-                    'saved_id': last_prediction.id
-                })
+                return Response(
+                    {
+                        "action": action,
+                        "predicted_price": last_prediction.predicted_price,
+                        "saved_id": last_prediction.id,
+                    }
+                )
             else:
-                return Response({'action': action})
+                return Response({"action": action})
         except Exception as e:
             logger.error(f"Error in predict: {e}")
             return Response(
-                {'error': 'Prediction failed'},
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+                {"error": "Prediction failed"},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
 
-    @action(detail=False, methods=['post'])
+    @action(detail=False, methods=["post"])
     def news_analysis(self, request):
         """
         Выполняет анализ новостей для символа с использованием задачи analyze_data_with_news.
@@ -153,25 +164,24 @@ class AnalyticsViewSet(viewsets.ModelViewSet):
         Returns:
             Response: Результат анализа или ошибка.
         """
-        symbol = request.data.get('symbol')
+        symbol = request.data.get("symbol")
         if not symbol:
             return Response(
-                {'error': 'Symbol required'},
-                status=status.HTTP_400_BAD_REQUEST
+                {"error": "Symbol required"}, status=status.HTTP_400_BAD_REQUEST
             )
 
         try:
             # Вызываем задачу analyze_data_with_news
             result = analyze_data_with_news.delay(symbol, request.user.id).get()
-            return Response({'result': result})
+            return Response({"result": result})
         except Exception as e:
             logger.error(f"Error in news_analysis: {e}")
             return Response(
-                {'error': 'Analysis failed'},
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+                {"error": "Analysis failed"},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
 
-    @action(detail=False, methods=['post'])
+    @action(detail=False, methods=["post"])
     def train_model(self, request):
         """
         Запускает задачу обучения модели с использованием train_ml_model.
@@ -185,12 +195,12 @@ class AnalyticsViewSet(viewsets.ModelViewSet):
         try:
             # Вызываем задачу train_ml_model
             result = train_ml_model.delay()
-            return Response({'status': 'Training started', 'task_id': result.id})
+            return Response({"status": "Training started", "task_id": result.id})
         except Exception as e:
             logger.error(f"Error in train_model: {e}")
             return Response(
-                {'error': 'Training failed'},
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+                {"error": "Training failed"},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
 
 
@@ -206,8 +216,7 @@ def calculate_profit(request):
     """
     trades = Trade.objects.filter(user=request.user)
     profit = sum(
-        (t.sell_price - t.buy_price) * t.amount
-        for t in trades if t.sell_price
+        (t.sell_price - t.buy_price) * t.amount for t in trades if t.sell_price
     )
-    model_to_counter(Trade, 'trades_count').inc()
-    return Response({'profit': profit})
+    model_to_counter(Trade, "trades_count").inc()
+    return Response({"profit": profit})
