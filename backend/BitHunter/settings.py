@@ -220,3 +220,6 @@ if not DEBUG:
     CSRF_COOKIE_SECURE = True
 
 DEMO_MODE = os.getenv('DEMO_MODE', 'True').lower() == 'true'
+
+SECURE_SSL_REDIRECT = True
+SECURE_HSTS_SECONDS = 31536000

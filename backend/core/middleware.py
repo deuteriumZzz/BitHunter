@@ -31,3 +31,16 @@ class SecurityMiddleware(MiddlewareMixin):
             )
             return HttpResponseForbidden("Доступ запрещен")
         return None
+
+    def __init__(self, get_response):
+        self.get_response = get_response
+
+    def __call__(self, request):
+        # Блокировка подозрительных строк
+        blocked_patterns = ['sql', 'script', 'javascript', '<script>', 'union select']
+        for key, value in request.GET.items():
+            if any(pattern in str(value).lower() for pattern in blocked_patterns):
+                return HttpResponseForbidden("Suspicious request")
+        # Логирование
+        logger.warning(f"Suspicious request from {request.META.get('REMOTE_ADDR')}: {request.GET}")
+        return self.get_response(request)

@@ -3,6 +3,8 @@
 
 Содержит представления для управления стратегиями (список, создание, запуск бота, метрики)
 и API-ключами. Включает шифрование чувствительных данных для API-ключей с улучшенной обработкой ошибок.
+
+Добавлена оптимизация с помощью select_related и prefetch_related для улучшения производительности запросов.
 """
 
 import os
@@ -12,6 +14,9 @@ from django.http import JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.utils.decorators import method_decorator
 from django.views import View
+
+from rest_framework import viewsets  # Добавлен импорт для ViewSets
+from rest_framework.permissions import IsAuthenticated  # Для аутентификации в ViewSets
 
 from .forms import ApiKeyForm, StrategyForm
 from .models import ApiKey, Strategy, Trade
@@ -32,7 +37,7 @@ def strategy_list(request):
     Возвращает:
     - HttpResponse: Рендеренный шаблон 'trading/strategy_list.html' с контекстом стратегий.
     """
-    strategies = Strategy.objects.filter(user=request.user)
+    strategies = Strategy.objects.filter(user=request.user).select_related('user').prefetch_related('parameters')  # Добавлена оптимизация для производительности
     return render(request, 'trading/strategy_list.html', {'strategies': strategies})
 
 
@@ -190,3 +195,19 @@ class ApiKeyView(View):
             except Exception as e:
                 form.add_error(None, f"Error encrypting or saving API key: {str(e)}")
         return render(request, 'trading/api_key_form.html', {'form': form})
+
+
+# Добавлен ViewSet для стратегий с оптимизацией производительности
+class StrategyViewSet(viewsets.ModelViewSet):
+    """
+    ViewSet для управления стратегиями через API.
+
+    Использует select_related для оптимизации запросов к связанным объектам (user)
+    и prefetch_related для параметров стратегии.
+    """
+    queryset = Strategy.objects.select_related('user').prefetch_related('parameters')
+    permission_classes = [IsAuthenticated]  # Убедитесь, что пользователь аутентифицирован
+
+    def get_queryset(self):
+        # Фильтрация по текущему пользователю для безопасности
+        return self.queryset.filter(user=self.request.user)

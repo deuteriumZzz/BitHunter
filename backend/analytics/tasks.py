@@ -116,6 +116,7 @@ def predict_price():
     
     :return: Действие предсказания или сообщение об ошибке.
     """
+    from news.tasks import get_news_sentiment
     try:
         last_hist = AnalyticsData.objects.last()
         if not last_hist:
@@ -250,3 +251,26 @@ def bulk_load_historical_data(symbol, timeframe='1h', limit=1000):
         ) for d in data
     ]
     AnalyticsData.objects.bulk_create(objects, ignore_conflicts=True)
+
+@shared_task
+def train_lstm_model(base_dir, limit=1000, epochs=100, batch_size=32):
+    """
+    Асинхронная задача для обучения LSTM-модели.
+    
+    :param base_dir: Базовая директория (например, settings.BASE_DIR).
+    :param limit: Количество данных для загрузки.
+    :param epochs: Эпохи обучения.
+    :param batch_size: Размер батча.
+    :return: Сообщение о статусе.
+    """
+    try:
+        from .model_trainer import ModelTrainer  # Импорт из model_trainer.py
+        trainer = ModelTrainer(base_dir)
+        data = trainer.load_data_from_csv(limit=limit)
+        if data is None or len(data) < 100:
+            return "Ошибка: Недостаточно данных для обучения."
+        model, scaler = trainer.train_model(data, epochs=epochs, batch_size=batch_size)
+        return f"Модель обучена и сохранена в {trainer.model_path}. Эпох: {epochs}, GPU: {'да' if tf.config.list_physical_devices('GPU') else 'нет'}."
+    except Exception as e:
+        logger.error(f"Ошибка обучения LSTM: {str(e)}")
+        return f"Ошибка обучения: {str(e)}"
