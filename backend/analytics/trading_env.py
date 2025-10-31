@@ -6,16 +6,19 @@
 Улучшения:
 - Награда: Добавлены штрафы за hold в убыточных позициях, бонусы за правильные действия, и компонент риска (на основе drawdown).
 - Наблюдения: Включены дополнительные фичи (SMA5, SMA10, RSI) для richer context.
-- Backtesting: Добавлен метод backtest() для симуляции и анализа производительности.
+- Backtesting: Добавлен метод backtest() для симуляции и анализа производительности, включая Sharpe ratio и VaR.
 - Стоп-лосс/тейк-профит: Автоматические выходы из позиций при достижении уровней.
+- Логирование: Добавлено для отладки и мониторинга.
 """
 
+import logging
 import numpy as np
 import gym
 from gym import spaces
 from django.core.exceptions import ValidationError
 from .models import AnalyticsData, Prediction
 
+logger = logging.getLogger(__name__)
 
 class TradingEnv(gym.Env):
     """
@@ -28,7 +31,7 @@ class TradingEnv(gym.Env):
     - Reward: реалистичный, учитывает profit/loss, позиции, комиссии, штрафы и риск
     - Интеграция с Django: опциональное сохранение Prediction в БД
     - Обработка ошибок и нормализация
-    - Улучшения: штрафы за hold, дополнительные фичи, backtesting, стоп-лосс/тейк-профит
+    - Улучшения: штрафы за hold, дополнительные фичи, backtesting, стоп-лосс/тейк-профит, логирование
     """
 
     def __init__(
@@ -81,6 +84,7 @@ class TradingEnv(gym.Env):
         self.take_profit = take_profit
         self.hold_penalty = hold_penalty
         self.total_reward = 0  # Для backtesting
+        self.portfolio_values = []  # Для трекинга значений портфеля (для метрик)
 
         self.action_space = spaces.Discrete(3)
 
@@ -146,6 +150,7 @@ class TradingEnv(gym.Env):
         self.position = 0
         self.entry_price = None
         self.total_reward = 0
+        self.portfolio_values = [self.initial_balance]  # Сброс трекинга
         return self._get_obs()
 
     def step(self, action):
@@ -212,6 +217,7 @@ class TradingEnv(gym.Env):
         reward -= risk_penalty
 
         self.total_reward += reward
+        self.portfolio_values.append(self.balance)  # Трекинг значений портфеля
 
         # Сохранение в БД
         if self.user:
@@ -228,11 +234,13 @@ class TradingEnv(gym.Env):
                 )
                 prediction.save()
             except Exception as e:
-                print(f"Error saving Prediction: {e}")
+                logger.error(f"Error saving Prediction: {e}")
 
         self.current_step += 1
         done = self.current_step >= self.max_steps
         obs = self._get_obs()
+
+        logger.debug(f"Action taken: {action}, Reward: {reward}, Balance: {self.balance}")
         return obs, reward, done, {}
 
     def _get_obs(self):
@@ -274,17 +282,17 @@ class TradingEnv(gym.Env):
             f"Step: {self.current_step}, Balance: {self.balance:.2f}, "
             f"Position: {self.position}, "
             f"Price: {self.historical_data[self.current_step, 0]:.2f}, "
-            f"Entry Price: {self.entry_price:.2f} if self.entry_price else 'None', "
+            f"Entry Price: {self.entry_price if self.entry_price else 'None'}, "
             f"Total Reward: {self.total_reward:.2f}"
         )
 
     def backtest(self, actions=None):
         """
         Метод для backtesting: симулирует среду с заданными действиями или случайными.
-        Возвращает статистику производительности.
+        Возвращает статистику производительности, включая Sharpe ratio и VaR.
 
         :param actions: Список действий (опционально, иначе случайные)
-        :return: Словарь с метриками (total_reward, win_rate, max_drawdown, etc.)
+        :return: Словарь с метриками (total_reward, win_rate, max_drawdown, sharpe_ratio, var_95, etc.)
         """
         self.reset()
         rewards = []
@@ -314,10 +322,24 @@ class TradingEnv(gym.Env):
 
         total_reward = sum(rewards)
         win_rate = wins / (wins + losses) if (wins + losses) > 0 else 0
+
+        # Расчёт Sharpe ratio и VaR на основе portfolio_values
+        if len(self.portfolio_values) > 1:
+            returns = np.diff(self.portfolio_values) / np.array(self.portfolio_values[:-1])
+            sharpe_ratio = np.mean(returns) / np.std(returns) * np.sqrt(252) if np.std(returns) > 0 else 0  # Годовой Sharpe
+            var_95 = np.percentile(returns, 5)  # VaR 95% (нижний 5-й процентиль)
+        else:
+            sharpe_ratio = 0
+            var_95 = 0
+
+        logger.info(f"Backtest results: Total reward {total_reward}, Sharpe {sharpe_ratio:.2f}, VaR 95% {var_95:.4f}")
+
         return {
             'total_reward': total_reward,
             'win_rate': win_rate,
             'max_drawdown': max_drawdown,
             'final_balance': self.balance,
-            'num_trades': wins + losses
+            'num_trades': wins + losses,
+            'sharpe_ratio': sharpe_ratio,
+            'var_95': var_95
         }
