@@ -1,16 +1,7 @@
 # BitHunter
 
 [![License](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)  [![Python](https://img.shields.io/badge/Python-3.8+-blue.svg)](https://www.python.org/)  [![Django](https://img.shields.io/badge/Django-4.2+-green.svg)](https://www.djangoproject.com/)  [![DRF](https://img.shields.io/badge/DRF-3.14+-orange.svg)](https://www.django-rest-framework.org/)  [![PostgreSQL](https://img.shields.io/badge/PostgreSQL-13+-blue.svg)](https://www.postgresql.org/)  [![Redis](https://img.shields.io/badge/Redis-6+-red.svg)](https://redis.io/)  [![Celery](https://img.shields.io/badge/Celery-5+-yellow.svg)](https://docs.celeryq.dev/)  [![Channels](https://img.shields.io/badge/Channels-4+-purple.svg)](https://channels.readthedocs.io/)  [![TensorFlow](https://img.shields.io/badge/TensorFlow-2.13+-orange.svg)](https://www.tensorflow.org/)  
-[![Stable Baselines3](https://img.shields.io/badge/Stable%20Baselines3-2.0+-green.svg)](https://stable-baselines3.readthedocs.io/)  
-[![ccxt](https://img.shields.io/badge/ccxt-4+-blue.svg)](https://ccxt.readthedocs.io/)  
-[![NewsAPI](https://img.shields.io/badge/NewsAPI-1.0+-lightgrey.svg)](https://newsapi.org/)  
-[![TextBlob](https://img.shields.io/badge/TextBlob-0.17+-yellow.svg)](https://textblob.readthedocs.io/)  
-[![Cryptography](https://img.shields.io/badge/Cryptography-41+-green.svg)](https://cryptography.io/)  
-[![PyOTP](https://img.shields.io/badge/PyOTP-2.8+-blue.svg)](https://pyotp.readthedocs.io/)  
-[![Prometheus](https://img.shields.io/badge/Prometheus-2.40+-orange.svg)](https://prometheus.io/)  
-[![Sentry](https://img.shields.io/badge/Sentry-1.30+-red.svg)](https://sentry.io/)  
-[![Docker](https://img.shields.io/badge/Docker-20+-blue.svg)](https://www.docker.com/)  
-[![Gunicorn](https://img.shields.io/badge/Gunicorn-20+-green.svg)](https://gunicorn.org/)
+[![Stable Baselines3](https://img.shields.io/badge/Stable%20Baselines3-2.0+-green.svg)](https://stable-baselines3.readthedocs.io/)  [![ccxt](https://img.shields.io/badge/ccxt-4+-blue.svg)](https://ccxt.readthedocs.io/)  [![NewsAPI](https://img.shields.io/badge/NewsAPI-1.0+-lightgrey.svg)](https://newsapi.org/)  [![TextBlob](https://img.shields.io/badge/TextBlob-0.17+-yellow.svg)](https://textblob.readthedocs.io/)  [![Cryptography](https://img.shields.io/badge/Cryptography-41+-green.svg)](https://cryptography.io/)  [![PyOTP](https://img.shields.io/badge/PyOTP-2.8+-blue.svg)](https://pyotp.readthedocs.io/)  [![Prometheus](https://img.shields.io/badge/Prometheus-2.40+-orange.svg)](https://prometheus.io/)  [![Sentry](https://img.shields.io/badge/Sentry-1.30+-red.svg)](https://sentry.io/)  [![Docker](https://img.shields.io/badge/Docker-20+-blue.svg)](https://www.docker.com/)  [![Gunicorn](https://img.shields.io/badge/Gunicorn-20+-green.svg)](https://gunicorn.org/)
 
 ## Описание
 
